@@ -1,0 +1,10 @@
+# Replace examples with the exact packages and versions used by your group.
+# Do not list Webots' built-in `controller` module.
+#
+# Common choices (uncomment only when used):
+# llama-cpp-python==0.3.*
+# vosk==0.3.45
+# sounddevice==0.5.*
+# pyttsx3==2.99
+# numpy==2.*
+# opencv-python==4.*

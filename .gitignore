@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.idea/
+.vscode/
+.DS_Store
+config/llm_config.json
+models/*.gguf
+models/*.bin
+models/*.safetensors
+logs/*.jsonl
+logs/*.log
