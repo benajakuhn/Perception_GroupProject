@@ -5,6 +5,8 @@ a safe feedback-based navigation method rather than teleporting the robot.
 """
 import json
 from pathlib import Path
+from collections import deque
+import math
 
 RUNNING = "RUNNING"
 SUCCEEDED = "SUCCEEDED"
@@ -34,6 +36,7 @@ class Navigator:
         self.active_location = None
         self.waypoints = []
         self.waypoint_index = 0
+        self.steps = 0
 
     def stop(self):
         self.left_motor.setVelocity(0.0)
@@ -47,10 +50,51 @@ class Navigator:
         """
         if location not in self.locations:
             return FAILED
+
         self.active_location = location
-        self.waypoints = []
         self.waypoint_index = 0
+        self.steps = 0
+
+        # get nodes from the graph
+        nodes = self.graph["nodes"]
+        # get current robot position
+        x, y, _ = self.gps.getValues()
+
+        # find the nearest graph node to the robot's current position
+        start_node = min(
+            nodes, key=lambda n: math.hypot(nodes[n][0] - x, nodes[n][1] - y)
+        )
+
+        # BFS queue
+        queue = deque([[start_node]])
+        # Set of visited nodes
+        visited = {start_node}
+        # Store the path from start to goal
+        path = [location]
+
+        # BFS
+        while queue:
+            # get the current path and node
+            curr_path = queue.popleft()
+            curr = curr_path[-1]
+
+            # check if goal is reached
+            if curr == location:
+                path = curr_path
+                break
+
+            # Unvisited neighbouring nodes
+            for u, v in self.graph["edges"]:
+                nxt = v if u == curr else (u if v == curr else None)
+                if nxt and nxt not in visited:
+                    visited.add(nxt)
+                    queue.append(curr_path + [nxt])
+
+        # Node path -> waypoint coordinates
+        self.waypoints = [nodes[n] for n in path]
+        # Initial motor stop
         self.stop()
+        # Navigation status
         return RUNNING
 
     def update(self) -> str:
