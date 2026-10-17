@@ -14,11 +14,11 @@ class Detection:
     image_x: Optional[float] = None
 
 class ObjectPerception:
-    MIN_AREA = 3000.0
-    REF_AREA = 6000.0
-    MIN_CIRCULARITY = 0.70
-    MAX_SEARCH_FRAMES = 60
-    FOUND_CONFIDENCE = 0.75
+    MIN_AREA = 1500.0
+    REF_AREA = 5000.0
+    MIN_CIRCULARITY = 0.50
+    MAX_SEARCH_FRAMES = 125
+    FOUND_CONFIDENCE = 0.70
 
     def __init__(self, camera, timestep):
         self.camera = camera

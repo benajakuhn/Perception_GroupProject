@@ -110,9 +110,9 @@ class Navigator:
             return FAILED
 
 
-        # check for timeout or obstacle
+        # check for timeout
         self.steps += 1
-        if self.steps > 3000 or self.front_is_blocked():
+        if self.steps > 3000:
             self.stop()
             return FAILED
 
@@ -120,9 +120,11 @@ class Navigator:
         x, y, _ = self.gps.getValues()
         # get current target x,y position
         tx, ty = self.waypoints[self.waypoint_index]
+        # store distance from target
+        dist = math.hypot(tx - x, ty - y)
 
         # Check if current waypoint is reached (0.15m arrival tolerance)
-        if math.hypot(tx - x, ty - y) < 0.15:
+        if dist < 0.15:
             # Move to next waypoint
             self.waypoint_index += 1
             # if all waypoints completed, goal is reached, stop and return SUCCEEDED
@@ -132,6 +134,8 @@ class Navigator:
                 return SUCCEEDED
             # update target x,y for next waypoint
             tx, ty = self.waypoints[self.waypoint_index]
+            # update distance to next waypoint
+            dist = math.hypot(tx - x, ty - y)
 
         # Compute heading from compass and angular error to target waypoint
         cx, cy, _ = self.compass.getValues()
@@ -139,15 +143,24 @@ class Navigator:
         target_angle = math.atan2(ty - y, tx - x)
         error = math.atan2(math.sin(target_angle - heading), math.cos(target_angle - heading))
 
-        # Turn in place if angle error is large, otherwise drive forward with steering
+        # Turn in place if angle error is large
         if abs(error) > 0.4:
             turn = max(-3.0, min(3.0, 2.5 * error))
-            left_speed = -turn
-            right_speed = turn
-        else:
-            turn = 2.0 * error
-            left_speed = max(-6.28, min(6.28, 4.5 - turn))
-            right_speed = max(-6.28, min(6.28, 4.5 + turn))
+            self.left_motor.setVelocity(-turn)
+            self.right_motor.setVelocity(turn)
+            return RUNNING
+        if self.front_is_blocked():
+            self.stop()
+            # If blocked by the ball and close to the target, consider navigation succeeded
+            if self.waypoint_index == len(self.waypoints) - 1 and dist < 0.75:
+                self.active_location = None
+                return SUCCEEDED
+            return FAILED
+
+        # if error is small drive forward with steering
+        turn = 2.0 * error
+        left_speed = max(-6.28, min(6.28, 4.5 - turn))
+        right_speed = max(-6.28, min(6.28, 4.5 + turn))
 
         self.left_motor.setVelocity(left_speed)
         self.right_motor.setVelocity(right_speed)
