@@ -17,6 +17,8 @@ class ObjectPerception:
     MIN_AREA = 3000.0
     REF_AREA = 6000.0
     MIN_CIRCULARITY = 0.70
+    MAX_SEARCH_FRAMES = 60
+    FOUND_CONFIDENCE = 0.75
 
     def __init__(self, camera, timestep):
         self.camera = camera
@@ -116,7 +118,16 @@ class ObjectPerception:
 
     def search_target(self, object_type: str, colour: str = None):
         """Return a detection/evidence object if the target is observed."""
-        # TODO
+        # Reject search without requested object type
+        if not object_type:
+            return None
+
+        # Return first detection matching requested type and colour
+        for det in self.detect():
+            if det.object_type == object_type and (colour is None or det.colour == colour):
+                return det
+            
+        # No matching target found in current frame
         return None
 
     def start_search(self, object_type: str, colour: str = None):
@@ -131,8 +142,44 @@ class ObjectPerception:
         main-thread skill controller, accumulate evidence over several frames,
         and stop after a documented bound rather than looping indefinitely.
         """
+
+        if not self.target:
+            # Search not possible without target
+            return "FAILED", {"outcome": "NOT_FOUND", "found": False, "detection": None}
+
+        # Examine one frame & retain strongest detection so far
         self.frames_examined += 1
-        detection = self.search_target(*self.target) if self.target else None
+        detection = self.search_target(*self.target)
+
         if detection is not None:
-            return "SUCCEEDED", detection
-        return "FAILED", None
+            if self.best_detection is None or detection.confidence > self.best_detection.confidence:
+                self.best_detection = detection
+
+            # Finish when detection is sufficiently reliable
+            if detection.confidence >= self.FOUND_CONFIDENCE:
+                return "SUCCEEDED", {
+                    "outcome": "FOUND",
+                    "found": True,
+                    "detection": detection,
+                }
+
+        # Continue scanning if max nr of frames not reached
+        if self.frames_examined < self.MAX_SEARCH_FRAMES:
+            return "RUNNING", None
+
+        # return weak detection if no strong detection was found after max frames
+        if self.best_detection is not None:
+            return "SUCCEEDED", {
+                "outcome": "UNCERTAIN",
+                "found": False,
+                "detection": self.best_detection,
+            }
+
+        # End the search when no detection was found after max frames
+        return "SUCCEEDED", {
+            "outcome": "NOT_FOUND",
+            "found": False,
+            "detection": None,
+        }
+
+
