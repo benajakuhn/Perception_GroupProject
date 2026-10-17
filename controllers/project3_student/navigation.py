@@ -105,13 +105,53 @@ class Navigator:
         obstacles with proximity sensors, enforce time/distance limits, and
         either choose a safe route or return FAILED with evidence.
         """
-        if self.active_location is None:
+        # Check if navigation is active and waypoints are available
+        if self.active_location is None or not self.waypoints:
             return FAILED
-        if self.front_is_blocked():
+
+
+        # check for timeout or obstacle
+        self.steps += 1
+        if self.steps > 3000 or self.front_is_blocked():
             self.stop()
             return FAILED
-        self.stop()
-        return FAILED
+
+        # get current position
+        x, y, _ = self.gps.getValues()
+        # get current target x,y position
+        tx, ty = self.waypoints[self.waypoint_index]
+
+        # Check if current waypoint is reached (0.15m arrival tolerance)
+        if math.hypot(tx - x, ty - y) < 0.15:
+            # Move to next waypoint
+            self.waypoint_index += 1
+            # if all waypoints completed, goal is reached, stop and return SUCCEEDED
+            if self.waypoint_index >= len(self.waypoints):
+                self.stop()
+                self.active_location = None
+                return SUCCEEDED
+            # update target x,y for next waypoint
+            tx, ty = self.waypoints[self.waypoint_index]
+
+        # Compute heading from compass and angular error to target waypoint
+        cx, cy, _ = self.compass.getValues()
+        heading = math.atan2(cx, cy)
+        target_angle = math.atan2(ty - y, tx - x)
+        error = math.atan2(math.sin(target_angle - heading), math.cos(target_angle - heading))
+
+        # Turn in place if angle error is large, otherwise drive forward with steering
+        if abs(error) > 0.4:
+            turn = max(-3.0, min(3.0, 2.5 * error))
+            left_speed = -turn
+            right_speed = turn
+        else:
+            turn = 2.0 * error
+            left_speed = max(-6.28, min(6.28, 4.5 - turn))
+            right_speed = max(-6.28, min(6.28, 4.5 + turn))
+
+        self.left_motor.setVelocity(left_speed)
+        self.right_motor.setVelocity(right_speed)
+        return RUNNING
 
     def front_is_blocked(self, threshold=80.0) -> bool:
         return max(self.proximity[i].getValue() for i in (0, 1, 6, 7)) > threshold
