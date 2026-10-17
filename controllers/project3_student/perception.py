@@ -25,6 +25,7 @@ class ObjectPerception:
         self.camera.enable(timestep)
         self.target = None
         self.frames_examined = 0
+        self.best_detection = None
 
     def detect(self) -> List[Detection]:
         """Analyse the current camera image.
@@ -64,7 +65,7 @@ class ObjectPerception:
         mask = ((r > 60) & (r > 2 * g) & (r > 2 * b)).astype(np.uint8) * 255
 
         # find contours in the mask
-        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         # compute the centre of the image
         centre_x = width / 2.0
 
@@ -134,6 +135,7 @@ class ObjectPerception:
         """Initialise a bounded multi-view search without blocking Webots."""
         self.target = (object_type, colour)
         self.frames_examined = 0
+        self.best_detection = None
 
     def update_search(self):
         """Inspect one frame and return (status, evidence).
