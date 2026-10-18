@@ -1,0 +1,7 @@
+{
+  "_comment": "TEST FIXTURES - hand-written answers for MockBackend (backend: \"mock\"). Not model output; never report these as model performance.",
+  "responses": [
+    {"version": "1.0", "goal": "go to the laboratory", "steps": [{"action": "navigate", "location": "laboratory"}]},
+    {"version": "1.0", "goal": "search the laboratory for the red ball, then office A if not found", "steps": [{"action": "navigate", "location": "laboratory"}, {"action": "search", "object": "ball", "colour": "red"}, {"action": "conditional", "condition": {"source": "last_search_result", "operator": "found", "value": false}, "then": [{"action": "navigate", "location": "office_a"}, {"action": "search", "object": "ball", "colour": "red"}], "else": []}, {"action": "report", "message": "Report the evidence-based result."}]}
+  ]
+}

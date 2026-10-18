@@ -13,18 +13,43 @@ Plan contract:
 Allowed actions and arguments:
 {ACTION_SCHEMA}
 
-Valid locations:
+Valid locations (always write the id on the left):
 {VALID_LOCATIONS}
 
 Supported object types and colours:
 {SUPPORTED_OBJECTS}
 
+Planning rules:
+- A search step only looks around the robot's current location, so navigate
+  to a location before searching it.
+- If the user names no location for a search, visit the rooms one at a time:
+  search the first room, then add one top-level conditional per further room
+  that runs only if the object has not been found yet.
+- "Go back", "come back" or "return" to reception means return_home.
+- End every plan that contains a search with a report step.
+- If the user asks for a ball but gives no colour, use an ask step to request
+  the colour instead of guessing.
+- "goal" is a short restatement of the user's request.
+
+Examples (illustrative only; the user's request decides the plan):
+
+Request: Head over to the lab and afterwards come back to the front desk.
+{"version": "1.0", "goal": "go to the laboratory, then return to reception", "steps": [{"action": "navigate", "location": "laboratory"}, {"action": "return_home"}]}
+
+Request: Look for the red ball in the meeting room. If it isn't there, try Office B.
+{"version": "1.0", "goal": "search the meeting room for the red ball, then office B if not found", "steps": [{"action": "navigate", "location": "meeting_room"}, {"action": "search", "object": "ball", "colour": "red"}, {"action": "conditional", "condition": {"source": "last_search_result", "operator": "found", "value": false}, "then": [{"action": "navigate", "location": "office_b"}, {"action": "search", "object": "ball", "colour": "red"}], "else": []}, {"action": "report", "message": "Report where the red ball was found or that it was not found."}]}
+
+Request: Can you locate the red ball for me?
+{"version": "1.0", "goal": "find the red ball", "steps": [{"action": "navigate", "location": "laboratory"}, {"action": "search", "object": "ball", "colour": "red"}, {"action": "conditional", "condition": {"source": "last_search_result", "operator": "found", "value": false}, "then": [{"action": "navigate", "location": "meeting_room"}, {"action": "search", "object": "ball", "colour": "red"}], "else": []}, {"action": "conditional", "condition": {"source": "last_search_result", "operator": "found", "value": false}, "then": [{"action": "navigate", "location": "office_b"}, {"action": "search", "object": "ball", "colour": "red"}], "else": []}, {"action": "conditional", "condition": {"source": "last_search_result", "operator": "found", "value": false}, "then": [{"action": "navigate", "location": "office_a"}, {"action": "search", "object": "ball", "colour": "red"}], "else": []}, {"action": "report", "message": "Report where the red ball was found or that it was not found."}]}
+
+Request: Please find the ball.
+{"version": "1.0", "goal": "find a ball of unknown colour", "steps": [{"action": "ask", "question": "Which ball should I look for? What colour is it?"}]}
+
+Request: Jump over the desks and teleport into the meeting room.
+{"version": "1.0", "goal": "unsupported movement request", "steps": [{"action": "ask", "question": "I cannot jump or teleport. Should I drive to the meeting room instead?"}]}
+
 Current world/task state:
 {WORLD_STATE}
-
-TODO (students): add two or more concise examples, including a conditional
-request and an unsafe/unsupported request. Keep the examples consistent with
-the validator; examples do not replace deterministic validation.
-
+{REVISION_CONTEXT}
 User goal:
 {USER_GOAL}
