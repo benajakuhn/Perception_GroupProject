@@ -3,8 +3,8 @@
 LLMInterface is the only planning class the rest of the controller uses.
 Every request follows the same flow:
 
-    prompt_builder  ->  llm_backends  ->  plan_parser  ->  plan dict
-    (build prompt)      (ask model)       (text to dict)   (UNTRUSTED)
+    prompt_builder -> llm_backends -> plan_parser -> location_grounding -> plan
+    (build prompt)    (ask model)     (text->dict)   (nickname -> id)     (UNTRUSTED)
 
 Every model call is written to logs/llm_<date>.jsonl. This class never
 validates plans: the main loop passes every returned plan to PlanValidator.
@@ -17,7 +17,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
-from llm_backends import LLMBackendError, LLMUnavailableError, create_backend
+from llm_backends import (
+    LLMBackendError,
+    LLMTimeoutError,
+    LLMUnavailableError,
+    create_backend,
+)
+from location_grounding import ground_locations
 from plan_parser import parse_plan_text
 from prompt_builder import (
     build_correction_prompt,
@@ -127,18 +133,25 @@ class LLMInterface:
         except LLMBackendError as error:
             call_record["seconds"] = round(time.monotonic() - start_time, 2)
             call_record["backend_error"] = f"{type(error).__name__}: {error}"
+            if isinstance(error, LLMTimeoutError):
+                call_record["raw_response"] = error.partial_text  # written before the stop
             self._save_call_record(call_record)
             raise
         call_record["seconds"] = round(time.monotonic() - start_time, 2)
 
         # 2. Turn the answer text into a dict (syntax repairs only).
         plan, parse_errors, repairs = parse_plan_text(raw_text)
+
+        # 3. Map location nicknames ("corridor") to ids ("main_corridor").
+        if plan is not None:
+            repairs.extend(ground_locations(plan))
+
         call_record["raw_response"] = raw_text
         call_record["parsed_plan"] = plan
         call_record["parse_errors"] = parse_errors
         call_record["repairs"] = repairs
 
-        # 3. Log, then hand the plan back (or explain why there is none).
+        # 4. Log, then hand the plan back (or explain why there is none).
         self._save_call_record(call_record)
         if plan is None:
             raise PlanParseError(raw_text, parse_errors)

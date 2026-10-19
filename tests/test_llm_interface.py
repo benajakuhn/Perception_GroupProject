@@ -16,7 +16,12 @@ CONTROLLER_DIR = PROJECT_ROOT / "controllers" / "project3_student"
 LOCAL_CONFIG_PATH = PROJECT_ROOT / "config" / "llm_config.json"
 sys.path.insert(0, str(CONTROLLER_DIR))
 
-from llm_backends import LLMBackendError, LLMUnavailableError, MockBackend  # noqa: E402
+from llm_backends import (  # noqa: E402
+    LLMBackendError,
+    LLMTimeoutError,
+    LLMUnavailableError,
+    MockBackend,
+)
 from llm_interface import LLMInterface, PlanParseError  # noqa: E402
 from plan_validator import PlanValidator  # noqa: E402
 from world_state import WorldState  # noqa: E402
@@ -175,6 +180,30 @@ class LoggingTests(LLMInterfaceTestCase):
         self.assertIsNone(record["raw_response"])
 
 
+class TimingOutBackend:
+    """Fake backend that always times out after writing part of an answer."""
+
+    def complete(self, prompt):
+        raise LLMTimeoutError("Model did not finish within 45 seconds.",
+                              partial_text='{"version": "1.0", "steps": [\n\n\n\n')
+
+    def description(self):
+        return {"backend": "fake", "model_identifier": "FAKE - always times out"}
+
+
+class TimeoutLoggingTests(LLMInterfaceTestCase):
+    def test_partial_answer_is_logged_on_timeout(self):
+        interface = self.make_interface([])
+        interface.backend = TimingOutBackend()
+        with self.assertRaises(LLMTimeoutError):
+            interface.generate_plan("go to the lab", self.world_state)
+        record = self.read_log_records()[0]
+        show("timeout in log", backend_error=record["backend_error"],
+             raw_response=repr(record["raw_response"]))
+        self.assertIn("LLMTimeoutError", record["backend_error"])
+        self.assertEqual(record["raw_response"], '{"version": "1.0", "steps": [\n\n\n\n')
+
+
 class MissingModelTests(unittest.TestCase):
     def test_missing_config_does_not_crash_but_planning_raises(self):
         interface = LLMInterface(config_path=PROJECT_ROOT / "no" / "such_config.json")
@@ -196,6 +225,23 @@ class MissingModelTests(unittest.TestCase):
 
 
 class FullChainTests(LLMInterfaceTestCase):
+    def test_nickname_location_is_grounded_before_validation(self):
+        answer_with_nickname = json.dumps({
+            "version": "1.0", "goal": "corridor, then meeting room",
+            "steps": [{"action": "navigate", "location": "corridor"},
+                      {"action": "navigate", "location": "meeting_room"}],
+        })
+        interface = self.make_interface([answer_with_nickname])
+        plan = interface.generate_plan("Go to the corridor, then the meeting room.",
+                                       self.world_state)
+        valid, errors = PlanValidator().validate(plan)
+        show("nickname answer -> grounded plan -> validator", raw=answer_with_nickname,
+             plan=plan, repairs=interface.last_call["repairs"], valid=valid)
+        self.assertEqual(plan["steps"][0]["location"], "main_corridor")
+        self.assertIn("Grounded location 'corridor' -> 'main_corridor'.",
+                      interface.last_call["repairs"])
+        self.assertTrue(valid, errors)
+
     def test_mock_plan_passes_through_to_validator(self):
         interface = self.make_interface([VALID_PLAN_TEXT])
         plan = interface.generate_plan("go to the lab", self.world_state)

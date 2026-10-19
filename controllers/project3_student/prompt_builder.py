@@ -8,6 +8,7 @@ model, reads files or decides whether a plan is valid.
 import json
 import re
 
+from location_grounding import LOCATION_NICKNAMES
 from plan_schema import (
     ACTION_REQUIRED_FIELDS,
     ALLOWED_CONDITION_OPERATORS,
@@ -65,15 +66,6 @@ CONDITION_DESCRIPTIONS = {
     "route_status": 'use operator "equals" with a status text such as "BLOCKED"',
 }
 
-LOCATION_NICKNAMES = {
-    "reception": "front desk, home, start",
-    "main_corridor": "corridor, hallway",
-    "office_a": "Office A",
-    "office_b": "Office B",
-    "laboratory": "lab",
-    "meeting_room": "conference room",
-}
-
 
 def build_plan_prompt(template: str, user_goal: str, world_state: dict) -> str:
     """Prompt for the first plan of a new goal."""
@@ -97,7 +89,9 @@ def build_correction_prompt(template: str, user_goal: str, world_state: dict,
         _shorten(_as_text(rejected_output), MAX_PREVIOUS_OUTPUT_LENGTH),
         "Problems found:",
         *error_lines,
-        "Return a corrected complete plan that fixes every problem.",
+        "Do not repeat your previous answer.",
+        "Return a corrected complete plan that fixes every problem, using only the "
+        "allowed actions, locations, objects and colours listed above.",
     ]
     return _fill_template(template, user_goal, world_state,
                           revision_context=_as_section(revision_lines))
@@ -207,7 +201,7 @@ def _describe_locations() -> str:
     for location in sorted(VALID_LOCATIONS):
         nicknames = LOCATION_NICKNAMES.get(location)
         if nicknames:
-            location_lines.append(f"- {location} (also called: {nicknames})")
+            location_lines.append(f"- {location} (also called: {', '.join(nicknames)})")
         else:
             location_lines.append(f"- {location}")
     return "\n".join(location_lines)

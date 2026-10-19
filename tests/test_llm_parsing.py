@@ -261,6 +261,34 @@ class PromptBuilderTests(unittest.TestCase):
             show("template example", goal=example_plan["goal"], valid=valid, errors=errors)
             self.assertTrue(valid, f"{errors} in example: {example_line[:80]}")
 
+    def test_template_keeps_the_safety_rules(self):
+        """These rules came from evaluation failures; guard against deleting them."""
+        prompt = build_plan_prompt(self.template, "go", self.world_state)
+        rules_part = prompt[prompt.index("Planning rules:"):prompt.index("Examples")]
+        show("planning rules in the prompt", rules="\n" + rules_part)
+
+        rules_on_one_line = " ".join(rules_part.split())  # ignore line breaks
+        safety_rules = [
+            "Only plan what the user asked for.",
+            "A conditional on last_search_result must come right after a search step.",
+            "End the plan with a report step only if it contains a search.",
+            "For any other movement (flying, jumping, climbing, going through walls), "
+            "return only an ask step",
+        ]
+        for safety_rule in safety_rules:
+            self.assertIn(safety_rule, rules_on_one_line)
+
+    def test_example_report_messages_are_all_different(self):
+        """Repeated example text was copied word for word by the 0.5B model."""
+        report_messages = []
+        for line in self.template.splitlines():
+            if line.startswith('{"'):
+                for step in json.loads(line)["steps"]:
+                    if step["action"] == "report":
+                        report_messages.append(step["message"])
+        show("example report messages", messages="\n" + "\n".join(report_messages))
+        self.assertEqual(len(report_messages), len(set(report_messages)))
+
 
 class CorrectionPromptTests(unittest.TestCase):
     def setUp(self):
@@ -275,6 +303,7 @@ class CorrectionPromptTests(unittest.TestCase):
         )
         self.assertIn('"action": "fly"', prompt)
         self.assertIn("unsupported action 'fly'", prompt)
+        self.assertIn("Do not repeat your previous answer.", prompt)
         self.assertIn("Return a corrected complete plan", prompt)
         show("correction prompt (end)", prompt_excerpt="\n" + end_of_prompt(prompt))
 

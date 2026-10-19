@@ -72,6 +72,12 @@ class MockBackendTests(unittest.TestCase):
             backend.complete("prompt two")
         show("MockBackend out of answers", error=caught.exception)
 
+    def test_timeout_error_carries_partial_text(self):
+        error = LLMTimeoutError("Model did not finish.", partial_text='{"version": ')
+        show("LLMTimeoutError", message=error, partial_text=repr(error.partial_text))
+        self.assertEqual(error.partial_text, '{"version": ')
+        self.assertEqual(LLMTimeoutError("no text given").partial_text, "")
+
     def test_description_is_labelled_as_mock(self):
         description = MockBackend([]).description()
         show("MockBackend description", description=description)
@@ -153,7 +159,9 @@ class RealModelTests(unittest.TestCase):
         backend = create_backend(config, PROJECT_ROOT)
         with self.assertRaises(LLMTimeoutError) as caught:
             backend.complete("Write a JSON object describing ten different rooms.")
-        show("timeout", error=caught.exception)
+        show("timeout", error=caught.exception,
+             partial_text=repr(caught.exception.partial_text))
+        self.assertIsInstance(caught.exception.partial_text, str)
 
 
 if __name__ == "__main__":

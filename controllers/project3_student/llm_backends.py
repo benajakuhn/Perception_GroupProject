@@ -23,7 +23,15 @@ class LLMUnavailableError(LLMBackendError):
 
 
 class LLMTimeoutError(LLMBackendError):
-    """The model did not finish its answer within the configured time."""
+    """The model did not finish its answer within the configured time.
+
+    partial_text is what the model had written before it was stopped, so the
+    logs show whether it was slow or stuck (e.g. repeating itself).
+    """
+
+    def __init__(self, message: str, partial_text: str = ""):
+        super().__init__(message)
+        self.partial_text = partial_text
 
 
 def create_backend(config: dict, project_root: Path):
@@ -57,7 +65,7 @@ class LlamaCppBackend:
         self.generation_settings = {
             "temperature": float(config.get("temperature", 0.0)),
             "top_p": float(config.get("top_p", 1.0)),
-            "max_tokens": int(config.get("max_tokens", 768)),
+            "max_tokens": int(config.get("max_tokens", 1000)),
             "seed": int(config.get("seed", 0)),
         }
         self.model = None  # loaded on the first complete() call, in the worker thread
@@ -84,7 +92,8 @@ class LlamaCppBackend:
             if time.monotonic() - start_time > self.timeout_seconds:
                 answer_stream.close()
                 raise LLMTimeoutError(
-                    f"Model did not finish within {self.timeout_seconds} seconds."
+                    f"Model did not finish within {self.timeout_seconds} seconds.",
+                    partial_text="".join(answer_pieces),
                 )
         return "".join(answer_pieces)
 
