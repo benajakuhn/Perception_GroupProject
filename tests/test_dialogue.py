@@ -1,0 +1,308 @@
+"""Tests for intent routing, clarification and status explanation."""
+import sys
+import unittest
+from pathlib import Path
+
+CONTROLLER_DIR = (
+    Path(__file__).resolve().parents[1] / "controllers" / "project3_student"
+)
+sys.path.insert(0, str(CONTROLLER_DIR))
+
+from nlu_dialogue import DialogueManager, normalise  # noqa: E402
+
+
+class NormaliseTests(unittest.TestCase):
+    def test_maps_location_phrases_to_canonical_tokens(self):
+        self.assertEqual(normalise("Go to Office B!"), "go to office_b")
+        self.assertEqual(normalise("the main corridor"), "the main_corridor")
+        self.assertEqual(normalise("the Lab"), "the laboratory")
+        self.assertEqual(normalise("conference room"), "meeting_room")
+
+    def test_handles_speech_recognition_spellings(self):
+        self.assertEqual(normalise("office bee"), "office_b")
+        # Mishearings recorded with Vosk in our own trials.
+        self.assertEqual(normalise("go to officer"), "go to office_a")
+        self.assertEqual(normalise("go to have his beer"), "go to office_b")
+        self.assertEqual(normalise("of his be"), "office_b")
+
+
+class ClassifyTests(unittest.TestCase):
+    def setUp(self):
+        self.dialogue = DialogueManager()
+
+    def test_stop_phrases(self):
+        for text in ("stop", "Cancel that", "please halt", "abort the task",
+                     "never mind"):
+            self.assertEqual(self.dialogue.classify(text), "stop", text)
+
+    def test_status_phrases(self):
+        for text in ("What are you doing and why?", "status",
+                     "Where are you?", "what's going on", "explain yourself"):
+            self.assertEqual(self.dialogue.classify(text), "status", text)
+
+    def test_goal_phrases(self):
+        for text in ("Go to the laboratory.", "Find the red ball",
+                     "Fly through the wall to Office B."):
+            self.assertEqual(self.dialogue.classify(text), "goal", text)
+
+    def test_background_talk_is_unknown(self):
+        # Real background speech recognised during a trial run.
+        for text in ("consider for it", "his name a hobby",
+                     "ross them amanda spoken to either", "hello"):
+            self.assertEqual(self.dialogue.classify(text), "unknown", text)
+
+    def test_noise_is_ignored(self):
+        for text in ("", "   ", "the", "uh", "huh?"):
+            self.assertEqual(self.dialogue.classify(text), "noise", repr(text))
+
+    def test_answer_only_while_waiting_for_clarification(self):
+        self.assertEqual(self.dialogue.classify("red"), "goal")
+        self.dialogue.analyse_for_missing_information("Find the ball")
+        self.assertEqual(self.dialogue.classify("red"), "answer")
+        self.assertEqual(self.dialogue.classify("the red one"), "answer")
+
+    def test_bare_letter_answer_is_not_filler(self):
+        # Trial run: "A" was heard as 'a' (open) and 'ay' (expected words).
+        self.dialogue.analyse_for_missing_information("Go to the office")
+        self.assertEqual(self.dialogue.classify("a", answer="ay"), "answer")
+        self.assertEqual(self.dialogue.classify("stop", answer="a"), "stop")
+        self.assertEqual(self.dialogue.classify("a"), "noise")
+
+    def test_new_goal_replaces_pending_clarification(self):
+        self.dialogue.analyse_for_missing_information("Find the ball")
+        self.assertEqual(self.dialogue.classify("go to reception"), "goal")
+
+    def test_stop_wins_while_waiting_for_clarification(self):
+        self.dialogue.analyse_for_missing_information("Find the ball")
+        self.assertEqual(self.dialogue.classify("cancel"), "stop")
+
+
+class ClarificationTests(unittest.TestCase):
+    def setUp(self):
+        self.dialogue = DialogueManager()
+
+    def assertComplete(self, text):
+        result = self.dialogue.analyse_for_missing_information(text)
+        self.assertFalse(result["needs_clarification"], (text, result))
+        self.assertFalse(self.dialogue.state.awaiting_clarification)
+        return result
+
+    def assertAsks(self, text, topic):
+        result = self.dialogue.analyse_for_missing_information(text)
+        self.assertTrue(result["needs_clarification"], text)
+        self.assertTrue(result["question"])
+        self.assertEqual(self.dialogue.state.clarification_topic, topic, text)
+        self.assertEqual(self.dialogue.state.pending_goal, text)
+        return result
+
+    def test_complete_goals_from_specification(self):
+        for text in (
+            "Go to the laboratory.",
+            "Go to the laboratory, then return to reception.",
+            "Find the red ball.",
+            "Look in the lab. If the red ball is not there, check the "
+            "meeting room.",
+            "Fly through the wall to Office B.",
+            "Return home",
+        ):
+            self.assertComplete(text)
+
+    def test_misheard_objects(self):
+        # "find the yellow box" was recognised as "find the yellow books".
+        self.assertComplete("find the yellow books")
+        self.assertAsks("find the ceiling", "colour")
+
+    def test_missing_colour(self):
+        result = self.assertAsks("Find the ball.", "colour")
+        self.assertIn("colour", result["question"])
+
+    def test_synonym_object_missing_colour(self):
+        self.assertAsks("Can you locate the sphere?", "colour")
+
+    def test_unsupported_colour(self):
+        result = self.assertAsks("Find the purple ball", "colour")
+        self.assertIn("red", result["question"])
+
+    def test_missing_object(self):
+        result = self.assertAsks("Find something red", "object")
+        self.assertIn("red", result["question"])
+        self.assertAsks("Search the meeting room", "object")
+
+    def test_ambiguous_office(self):
+        self.assertAsks("Go to the office", "office")
+
+    def test_missing_location(self):
+        self.assertAsks("Go over there", "location")
+
+    def test_context_resolves_ball_after_earlier_mention(self):
+        self.assertComplete("Find the red ball in the lab")
+        result = self.assertComplete("Now find the ball")
+        self.assertIn("red ball", result["goal"])
+
+
+class FollowupTests(unittest.TestCase):
+    def setUp(self):
+        self.dialogue = DialogueManager()
+
+    def test_colour_answer_is_merged_and_state_cleared(self):
+        self.dialogue.analyse_for_missing_information("Find the ball")
+        result = self.dialogue.consume_followup("The red one, please")
+        self.assertEqual(result["goal"], "Find the ball (red)")
+        self.assertIsNone(result["question"])
+        self.assertFalse(self.dialogue.state.awaiting_clarification)
+        self.assertIsNone(self.dialogue.state.pending_goal)
+        # The merged goal is now complete.
+        again = self.dialogue.analyse_for_missing_information(result["goal"])
+        self.assertFalse(again["needs_clarification"])
+
+    def test_unsupported_colour_is_replaced(self):
+        self.dialogue.analyse_for_missing_information("Find the purple ball")
+        result = self.dialogue.consume_followup("red")
+        self.assertEqual(result["goal"], "Find the ball (red)")
+
+    def test_object_answer(self):
+        self.dialogue.analyse_for_missing_information("Find something red")
+        result = self.dialogue.consume_followup("a ball")
+        self.assertEqual(result["goal"], "Find something red (ball)")
+
+    def test_expected_word_answer_is_preferred(self):
+        self.dialogue.analyse_for_missing_information("Go to the office")
+        result = self.dialogue.consume_followup("of his", answer="office b")
+        self.assertEqual(result["goal"], "Go to the office (Office B)")
+
+    def test_open_text_used_when_answer_is_empty(self):
+        self.dialogue.analyse_for_missing_information("Find the ball")
+        result = self.dialogue.consume_followup("green", answer="")
+        self.assertEqual(result["goal"], "Find the ball (green)")
+
+    def test_misheard_colour_answer(self):
+        self.dialogue.analyse_for_missing_information("Find the ball")
+        result = self.dialogue.consume_followup("read")
+        self.assertEqual(result["goal"], "Find the ball (red)")
+
+    def test_office_answer_variants(self):
+        for answer, expected in (("office b", "Office B"), ("bear", "Office B"),
+                                 ("of his be", "Office B"),
+                                 ("the second one", "Office B"),
+                                 ("officer", "Office A"), ("a", "Office A"),
+                                 ("the first one", "Office A"),
+                                 ("office b a please", "Office B")):
+            self.dialogue.analyse_for_missing_information("Go to the office")
+            result = self.dialogue.consume_followup(answer)
+            self.assertEqual(result["goal"], f"Go to the office ({expected})",
+                             answer)
+
+    def test_expected_words_follow_the_question(self):
+        self.assertIsNone(self.dialogue.expected_words())
+        self.dialogue.analyse_for_missing_information("Find the ball")
+        words = self.dialogue.expected_words()
+        self.assertIn("red", words)
+        self.assertIn("stop", words)
+        self.assertIn("[unk]", words)
+        self.dialogue.analyse_for_missing_information("Go to the office")
+        words = self.dialogue.expected_words()
+        self.assertIn("b", words)
+        self.assertNotIn("the", words)
+        self.dialogue.consume_followup("b")
+        self.assertIsNone(self.dialogue.expected_words())
+
+    def test_bare_office_letter(self):
+        self.dialogue.analyse_for_missing_information("Go to the office")
+        result = self.dialogue.consume_followup("B")
+        self.assertEqual(result["goal"], "Go to the office (Office B)")
+        again = self.dialogue.analyse_for_missing_information(result["goal"])
+        self.assertFalse(again["needs_clarification"])
+
+    def test_location_answer(self):
+        self.dialogue.analyse_for_missing_information("Go over there")
+        result = self.dialogue.consume_followup("the lab")
+        self.assertEqual(result["goal"], "Go over there (the laboratory)")
+
+    def test_unclear_answer_reasks_then_gives_up(self):
+        self.dialogue.analyse_for_missing_information("Find the ball")
+        first = self.dialogue.consume_followup("banana")
+        self.assertIsNone(first["goal"])
+        self.assertIn("Which colour", first["question"])
+        self.assertTrue(self.dialogue.state.awaiting_clarification)
+        second = self.dialogue.consume_followup("banana")
+        self.assertIsNone(second["goal"])
+        self.assertIn("whole task", second["question"])
+        self.assertFalse(self.dialogue.state.awaiting_clarification)
+
+    def test_without_pending_goal_text_passes_through(self):
+        result = self.dialogue.consume_followup("Go to reception")
+        self.assertEqual(result["goal"], "Go to reception")
+
+    def test_reset_clears_pending(self):
+        self.dialogue.analyse_for_missing_information("Find the ball")
+        self.dialogue.reset()
+        self.assertFalse(self.dialogue.state.awaiting_clarification)
+
+
+class StatusTests(unittest.TestCase):
+    def world(self, **overrides):
+        state = {
+            "current_location": "reception",
+            "current_goal": None,
+            "current_step": None,
+            "last_search_result": None,
+            "blocked_routes": [],
+            "notes": [],
+            "replan_count": 0,
+            "execution_status": "IDLE",
+        }
+        state.update(overrides)
+        return state
+
+    def test_idle(self):
+        text = DialogueManager.describe_status(self.world())
+        self.assertIn("not doing anything", text)
+        self.assertIn("reception", text)
+
+    def test_planning(self):
+        text = DialogueManager.describe_status(
+            self.world(current_goal="Find the red ball")
+        )
+        self.assertIn("plan", text)
+        self.assertIn("Find the red ball", text)
+
+    def test_running_explains_step_and_reason(self):
+        text = DialogueManager.describe_status(self.world(
+            execution_status="RUNNING",
+            current_goal="Find the red ball",
+            current_step={"action": "search", "object": "ball",
+                          "colour": "red"},
+            current_location="laboratory",
+            last_search_result={"result": "NOT_FOUND", "confidence": 0.8},
+            replan_count=1,
+        ))
+        self.assertIn("searching for the red ball", text)
+        self.assertIn("because you asked me to: Find the red ball", text)
+        self.assertIn("the laboratory", text)
+        self.assertIn("did not find the target", text)
+        self.assertIn("80%", text)
+        self.assertIn("revised my plan once", text)
+
+    def test_running_navigation(self):
+        text = DialogueManager.describe_status(self.world(
+            execution_status="RUNNING",
+            current_goal="Go to Office A",
+            current_step={"action": "navigate", "location": "office_a"},
+        ))
+        self.assertIn("driving to Office A", text)
+
+    def test_failed_and_cancelled(self):
+        failed = DialogueManager.describe_status(
+            self.world(execution_status="FAILED", current_goal="Go to the lab",
+                       blocked_routes=["centre-laboratory_entry"])
+        )
+        self.assertIn("could not complete", failed)
+        self.assertIn("blocked", failed)
+        cancelled = DialogueManager.describe_status(
+            self.world(execution_status="CANCELLED", current_goal="Go to the lab")
+        )
+        self.assertIn("cancelled", cancelled)
+
+
+if __name__ == "__main__":
+    unittest.main()

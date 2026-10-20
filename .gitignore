@@ -9,3 +9,5 @@ models/*.bin
 models/*.safetensors
 logs/*.jsonl
 logs/*.log
+models/vosk-model*/
+models/*.zip

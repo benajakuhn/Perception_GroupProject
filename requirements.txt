@@ -1,10 +1,12 @@
-# Replace examples with the exact packages and versions used by your group.
-# Do not list Webots' built-in `controller` module.
+# Exact packages and versions used by the group (Python 3.12, the interpreter
+# configured in Webots). Do not list Webots' built-in `controller` module.
 #
-# Common choices (uncomment only when used):
+# Interaction (R1): speech recognition and synthesis
+vosk==0.3.44
+sounddevice==0.5.5
+pyttsx3==2.99  # used on Windows/Linux; macOS uses the built-in `say` command
+#
+# Other roles: add your packages below with exact versions.
 # llama-cpp-python==0.3.*
-# vosk==0.3.45
-# sounddevice==0.5.*
-# pyttsx3==2.99
 # numpy==2.*
 # opencv-python==4.*
