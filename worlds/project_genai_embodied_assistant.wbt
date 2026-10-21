@@ -573,15 +573,14 @@ DEF RED_DISTRACTOR Solid {
         roughness 0.45
         metalness 0
       }
-      geometry Sphere {
-        radius 0.06
-        subdivision 2
+      geometry Box {
+        size 0.12 0.12 0.12
       }
     }
   ]
-  name "red distractor"
-  boundingObject Sphere {
-    radius 0.06
+  name "red box distractor"
+  boundingObject Box {
+    size 0.12 0.12 0.12
   }
   physics Physics {
     density -1
@@ -675,4 +674,9 @@ DEF SERVICE_ROBOT E-puck {
       name "compass"
     }
   ]
+}
+Robot {
+  name "scene setup supervisor"
+  controller "scene_randomizer"
+  supervisor TRUE
 }
