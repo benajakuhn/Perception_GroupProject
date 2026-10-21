@@ -100,50 +100,21 @@ def consume_planning_result():
         executive.start(result["plan"])
 
 
-# --- TEMPORARY TEST HARNESS FOR NAVIGATION & PERCEPTION ---
-test_rooms = ["laboratory", "meeting_room", "office_b", "office_a", "reception"]
-room_idx = 0
-test_state = "WARMUP"
-
 while robot.step(TIME_STEP) != -1:
-    if test_state == "WARMUP":
-        # Wait 1 step so GPS and Compass have valid readings before start()
-        test_state = "START_NAV"
+    consume_planning_result()
 
-    elif test_state == "START_NAV":
-        if room_idx >= len(test_rooms):
-            print("[TEST COMPLETE] Visited all test rooms.")
-            navigator.stop()
-            break
-        target = test_rooms[room_idx]
-        print(f"\n[TEST] Navigating to {target}...")
-        status = navigator.start(target)
-        print(f"[TEST] Waypoints: {navigator.waypoints}")
-        test_state = "NAVIGATING" if status == "RUNNING" else "NEXT_ROOM"
+    if executive.active:
+        status = executive.update()
+        if status == SUCCEEDED:
+            print("[TASK SUCCEEDED]", executive.trace)
+            speech.speak("Task complete.")
+        elif status == FAILED:
+            print("[TASK FAILED]", executive.trace)
+            # TODO: request a revised plan using bounded failure evidence.
+            # Validate every revision and stop after MAX_REPLANS.
+            speech.speak("I could not complete the task safely.")
 
-    elif test_state == "NAVIGATING":
-        status = navigator.update()
-        if status == "SUCCEEDED":
-            print(f"[TEST] Arrived at {test_rooms[room_idx]}! Starting camera scan...")
-            perception.start_search("ball", "red")
-            test_state = "SEARCHING"
-        elif status == "FAILED":
-            print(f"[TEST] Navigation to {test_rooms[room_idx]} FAILED (obstacle or timeout).")
-            test_state = "NEXT_ROOM"
-
-    elif test_state == "SEARCHING":
-        # Spin in place so the camera scans 360 degrees around the room pad
-        left_motor.setVelocity(-2.0)
-        right_motor.setVelocity(2.0)
-
-        status, evidence = perception.update_search()
-        if status != "RUNNING":
-            navigator.stop()
-            print(f"[TEST] Search result in {test_rooms[room_idx]}: {status} | {evidence}")
-            test_state = "NEXT_ROOM"
-
-    elif test_state == "NEXT_ROOM":
-        room_idx += 1
-        test_state = "START_NAV"
+    # TODO: poll a speech-input queue here and call submit_goal(text). Do not
+    # call a blocking microphone or model function directly in this loop.
 
 worker.shutdown(wait=False, cancel_futures=True)
