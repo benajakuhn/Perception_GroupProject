@@ -1,0 +1,13 @@
+{
+    "backend": "llama_cpp",
+    "model_identifier": "Qwen2.5-3B-Instruct GGUF Q4_K_M (qwen2.5-3b-instruct-q4_k_m.gguf)",
+    "model_path": "models/qwen2.5-3b-instruct-q4_k_m.gguf",
+    "temperature": 0.0,
+    "timeout_seconds": 180,
+    "max_retries": 1,
+    "n_ctx": 4096,
+    "max_tokens": 1000,
+    "seed": 0,
+    "json_mode": true,
+    "n_threads": null
+}

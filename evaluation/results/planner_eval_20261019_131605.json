@@ -1,0 +1,74 @@
+{
+  "time": "2026-10-19T13:16:05",
+  "note": "Genuine model output from evaluation/run_planner_eval.py.",
+  "backend": {
+    "backend": "llama_cpp",
+    "model_identifier": "Qwen2.5-3B-Instruct GGUF Q4_K_M (qwen2.5-3b-instruct-q4_k_m.gguf)",
+    "model_file": "qwen2.5-3b-instruct-q4_k_m.gguf",
+    "llama_cpp_version": "0.3.36",
+    "n_ctx": 4096,
+    "json_mode": true,
+    "timeout_seconds": 180.0,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_tokens": 1000,
+    "seed": 0
+  },
+  "max_retries": 1,
+  "results": [
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "visit office A and return to reception",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "office_a"
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 52.1,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "sequential",
+      "goal": "Visit Office A and then go back to reception.",
+      "expected": "navigate office_a, return_home"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "go to the corridor, then to the meeting room",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "main_corridor"
+          },
+          {
+            "action": "navigate",
+            "location": "meeting_room"
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 11.8,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "sequential",
+      "goal": "Go to the corridor, after that the meeting room.",
+      "expected": "navigate main_corridor, navigate meeting_room"
+    }
+  ]
+}
