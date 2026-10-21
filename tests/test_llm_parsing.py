@@ -307,6 +307,21 @@ class CorrectionPromptTests(unittest.TestCase):
         self.assertIn("Return a corrected complete plan", prompt)
         show("correction prompt (end)", prompt_excerpt="\n" + end_of_prompt(prompt))
 
+    def test_long_rejected_plan_is_not_shortened(self):
+        """Errors point at step paths, so the model must see the whole plan."""
+        longest_example = max(
+            (line for line in self.template.splitlines() if line.startswith('{"')),
+            key=len,
+        )
+        rejected_plan = json.loads(longest_example)
+        rejected_plan["steps"][-2]["then"][0]["location"] = "store_room"
+        prompt = build_correction_prompt(
+            self.template, "x", self.world_state, rejected_plan,
+            ["steps[4].then[0]: invalid location 'store_room'."],
+        )
+        self.assertIn(json.dumps(rejected_plan), prompt)
+        show("long rejected plan", characters=len(json.dumps(rejected_plan)))
+
     def test_shows_only_the_first_errors(self):
         errors = [f"error number {index}" for index in range(MAX_ERRORS_SHOWN + 3)]
         prompt = build_correction_prompt(self.template, "x", self.world_state,
