@@ -3,7 +3,6 @@
 Defines the deterministic contract, allowed actions, execution statuses, and condition grammar.
 """
 
-# Existing baseline definitions (preserved)
 ALLOWED_ACTIONS = {
     "navigate",
     "search",
@@ -46,7 +45,7 @@ VALID_LOCATIONS = {
 SUPPORTED_OBJECTS = {"ball", "box", "cylinder"}
 SUPPORTED_COLOURS = {"red", "green", "blue", "yellow"}
 
-# --- Extensions for Execution Monitoring & Enhanced Validation ---
+# Execution monitoring and validation
 
 STATUS_IDLE = "IDLE"
 STATUS_RUNNING = "RUNNING"

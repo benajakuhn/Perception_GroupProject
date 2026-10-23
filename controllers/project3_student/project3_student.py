@@ -116,7 +116,7 @@ def replan_goal_off_thread(original_goal: str, state_snapshot: dict,
 
 
 def submit_goal(user_goal: str):
-    """Initiate planning for a new user request."""
+    """Begin planning when the controller is idle."""
     global planning_future
     if planning_future is not None or executive.active:
         speech.speak("I am already working on a task.")
@@ -197,9 +197,7 @@ def consume_planning_result():
         print("[UNEXPECTED PLANNING RESULT]", result)
         speech.speak("Planning returned an unexpected result.")
 
-
-# --- Main Webots Controller Loop ---
-print("Embodied Robot Assistant ready.")
+print("Robot Assistant ready.")
 
 while robot.step(TIME_STEP) != -1:
     # 1. Collect planning results

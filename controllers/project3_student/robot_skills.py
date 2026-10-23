@@ -1,8 +1,4 @@
-"""Deterministic, non-blocking skills available to validated plans.
-
-Bridges high-level symbolic actions to Navigator, Perception,
-SemanticMemory, and Speech operations.
-"""
+"""Deterministic, non-blocking skills available to validated plans."""
 
 
 class RobotSkills:

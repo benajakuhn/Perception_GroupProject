@@ -19,7 +19,7 @@ from plan_schema import (
     VALID_ROUTE_STATUSES,
 )
 
-# Prohibited keywords in any plan string (security blacklist)
+# Prohibited keywords in planning string
 PROHIBITED_SUBSTRINGS = (
     "eval(", "exec(", "compile(", "__import__", "globals(", "locals(",
     "os.system", "subprocess", "shutil", "sys.", "open(", "socket",
