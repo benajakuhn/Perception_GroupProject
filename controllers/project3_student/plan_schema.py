@@ -1,8 +1,9 @@
-"""Shared symbolic-plan definitions for the group project.
+"""Shared symbolic-plan definitions and schemas.
 
-Students may extend the schema, but should keep the representation explicit,
-machine-readable and independently validatable.
+Defines the deterministic contract, allowed actions, execution statuses, and condition grammar.
 """
+
+# Existing baseline definitions (preserved)
 ALLOWED_ACTIONS = {
     "navigate",
     "search",
@@ -11,6 +12,7 @@ ALLOWED_ACTIONS = {
     "report",
     "return_home",
     "stop",
+    "conditional",
 }
 
 PLAN_VERSION = "1.0"
@@ -26,6 +28,7 @@ ACTION_REQUIRED_FIELDS = {
     "report": {"message"},
     "return_home": set(),
     "stop": set(),
+    "conditional": {"condition", "then", "else"},
 }
 
 ALLOWED_CONDITION_SOURCES = {"last_search_result", "route_status"}
@@ -42,3 +45,30 @@ VALID_LOCATIONS = {
 
 SUPPORTED_OBJECTS = {"ball", "box", "cylinder"}
 SUPPORTED_COLOURS = {"red", "green", "blue", "yellow"}
+
+# --- Extensions for Execution Monitoring & Enhanced Validation ---
+
+STATUS_IDLE = "IDLE"
+STATUS_RUNNING = "RUNNING"
+STATUS_SUCCEEDED = "SUCCEEDED"
+STATUS_FAILED = "FAILED"
+STATUS_TIMEOUT = "TIMEOUT"
+STATUS_BLOCKED = "BLOCKED"
+STATUS_CANCELLED = "CANCELLED"
+
+ALL_STATUSES = {
+    STATUS_IDLE,
+    STATUS_RUNNING,
+    STATUS_SUCCEEDED,
+    STATUS_FAILED,
+    STATUS_TIMEOUT,
+    STATUS_BLOCKED,
+    STATUS_CANCELLED,
+}
+
+ACTION_OPTIONAL_FIELDS = {
+    "search": {"colour"},
+}
+
+CONDITION_REQUIRED_FIELDS = {"source", "operator", "value"}
+VALID_ROUTE_STATUSES = {"CLEAR", "BLOCKED", "FAILED", "TIMEOUT"}
