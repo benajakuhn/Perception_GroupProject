@@ -31,6 +31,7 @@ from prompt_builder import (  # noqa: E402
     MAX_ERRORS_SHOWN,
     MAX_GOAL_LENGTH,
     MAX_TRACE_ENTRIES_SHOWN,
+    REPLAN_EXAMPLE_PLAN,
     build_correction_prompt,
     build_plan_prompt,
     build_replan_prompt,
@@ -361,11 +362,145 @@ class ReplanPromptTests(unittest.TestCase):
         remaining_steps = [{"action": "search", "object": "ball", "colour": "red"}]
         prompt = build_replan_prompt(self.template, "check the lab for the red ball",
                                      self.world_state, trace, remaining_steps)
-        self.assertIn("-> BLOCKED; evidence: front obstacle at ps0", prompt)
+        self.assertIn("- navigate laboratory -> BLOCKED (front obstacle at ps0)", prompt)
         self.assertIn('{"action": "search", "object": "ball", "colour": "red"}', prompt)
         self.assertIn("Plan only the remaining work", prompt)
         self.assertIn("check the lab for the red ball", prompt)
         show("replan prompt after BLOCKED (end)", prompt_excerpt="\n" + end_of_prompt(prompt))
+
+    def search_then_blocked_case(self):
+        """Lab searched (not found), then the route to the meeting room was blocked."""
+        trace = [
+            {"step": {"action": "navigate", "location": "laboratory"}, "status": "SUCCEEDED",
+             "evidence": {"target": "laboratory", "outcome": "SUCCEEDED", "reason": "arrived",
+                          "position": [0.0, 2.0], "elapsed_steps": 410}},
+            {"step": {"action": "search", "object": "ball", "colour": "red"},
+             "status": "SUCCEEDED",
+             "evidence": {"result": "NOT_FOUND", "outcome": "NOT_FOUND", "found": False,
+                          "confidence": 0.0, "detection": None, "location": "laboratory"}},
+            {"step": {"action": "conditional"}, "status": "EXPANDED", "evidence": None},
+            {"step": {"action": "navigate", "location": "meeting_room"}, "status": "BLOCKED",
+             "evidence": {"target": "meeting_room", "outcome": "BLOCKED",
+                          "reason": "front obstacle", "position": [1.2, -0.4],
+                          "elapsed_steps": 95}},
+        ]
+        remaining_steps = [
+            {"action": "navigate", "location": "meeting_room"},
+            {"action": "search", "object": "ball", "colour": "red"},
+            {"action": "report", "message": "Tell the user where the red ball was found."},
+        ]
+        world_state = dict(self.world_state, current_location="laboratory",
+                           blocked_routes=["meeting_room"], execution_status="BLOCKED")
+        return trace, remaining_steps, world_state
+
+    def test_trace_is_written_as_short_plain_lines(self):
+        trace, remaining_steps, world_state = self.search_then_blocked_case()
+        prompt = build_replan_prompt(self.template, "find the red ball", world_state,
+                                     trace, remaining_steps)
+        show("replan prompt after search + BLOCKED (end)",
+             prompt_excerpt="\n" + end_of_prompt(prompt))
+        self.assertIn("- navigate laboratory -> arrived", prompt)
+        self.assertIn("- search red ball at laboratory -> not found", prompt)
+        self.assertIn("- navigate meeting_room -> BLOCKED (front obstacle)", prompt)
+        self.assertNotIn("elapsed_steps", prompt)
+        self.assertNotIn("EXPANDED", prompt)
+
+    def test_known_facts_are_worked_out_from_the_trace(self):
+        trace, remaining_steps, world_state = self.search_then_blocked_case()
+        prompt = build_replan_prompt(self.template, "find the red ball", world_state,
+                                     trace, remaining_steps)
+        self.assertIn("- The robot is at laboratory.", prompt)
+        self.assertIn("- Already searched without finding the red ball: laboratory.", prompt)
+        self.assertIn("- Blocked or unreachable, do not navigate there: meeting_room.", prompt)
+        self.assertIn("- Plan only the remaining work, starting from laboratory.", prompt)
+
+    def test_failed_step_is_shown_apart_from_steps_not_started(self):
+        trace, remaining_steps, world_state = self.search_then_blocked_case()
+        prompt = build_replan_prompt(self.template, "find the red ball", world_state,
+                                     trace, remaining_steps)
+        self.assertIn('Step that failed: {"action": "navigate", "location": "meeting_room"}',
+                      prompt)
+        not_started_line = next(line for line in prompt.splitlines()
+                                if line.startswith("Steps that were not started:"))
+        self.assertNotIn("meeting_room", not_started_line)
+        self.assertIn('"action": "search"', not_started_line)
+
+    def test_rule_against_starting_with_last_search_result_conditional(self):
+        prompt = build_replan_prompt(self.template, "x", self.world_state, [], [])
+        self.assertIn("do not start the plan with a conditional on last_search_result",
+                      prompt)
+
+    def test_replan_example_passes_the_validator(self):
+        valid, errors = PlanValidator().validate(REPLAN_EXAMPLE_PLAN)
+        self.assertTrue(valid, errors)
+
+    def test_example_is_only_in_replan_prompts(self):
+        example_text = json.dumps(REPLAN_EXAMPLE_PLAN)
+        first_plan_prompt = build_plan_prompt(self.template, "x", self.world_state)
+        replan_prompt = build_replan_prompt(self.template, "x", self.world_state, [], [])
+        self.assertNotIn(example_text, first_plan_prompt)
+        self.assertIn(example_text, replan_prompt)
+
+
+class ReplanFromExecutiveTraceTests(unittest.TestCase):
+    """A real TaskExecutive + RobotSkills trace, with fake navigator and camera."""
+
+    class FakeNavigator:
+        def start(self, location):
+            self.target = location
+            return "RUNNING"
+
+        def update(self):
+            if self.target == "office_b":
+                self.last_evidence = {"reason": "front obstacle"}
+                return "FAILED"
+            self.last_evidence = {"reason": "arrived"}
+            return "SUCCEEDED"
+
+        def front_is_blocked(self):
+            return self.target == "office_b"
+
+        def cancel(self):
+            pass
+
+    class FakePerception:
+        def start_search(self, object_type, colour):
+            pass
+
+        def update_search(self):
+            return "SUCCEEDED", {"outcome": "NOT_FOUND", "found": False, "detection": None}
+
+    class FakeSpeech:
+        def speak(self, text):
+            pass
+
+    def test_search_location_from_robot_skills_reaches_the_prompt(self):
+        from robot_skills import RobotSkills
+        from semantic_memory import SemanticMemory
+        from task_executive import TaskExecutive
+
+        world_state = WorldState()
+        skills = RobotSkills(self.FakeNavigator(), self.FakePerception(),
+                             SemanticMemory(), self.FakeSpeech(), world_state)
+        executive = TaskExecutive(skills, world_state)
+        executive.start({"steps": [
+            {"action": "navigate", "location": "meeting_room"},
+            {"action": "search", "object": "ball", "colour": "red"},
+            {"action": "navigate", "location": "office_b"},
+        ]})
+        while executive.active:
+            executive.update()
+
+        prompt = build_replan_prompt(
+            PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8"), "find the red ball",
+            world_state.as_dict(), world_state.get_failure_trace(executive.trace),
+            executive.steps[executive.step_index:],
+        )
+        show("replan prompt from executive trace (end)",
+             prompt_excerpt="\n" + end_of_prompt(prompt))
+        self.assertIn("- search red ball at meeting_room -> not found", prompt)
+        self.assertIn("- navigate office_b -> BLOCKED (front obstacle)", prompt)
+        self.assertIn("- Already searched without finding the red ball: meeting_room.", prompt)
 
 
 if __name__ == "__main__":

@@ -86,6 +86,8 @@ class RobotSkills:
                     "found": bool(raw_evidence.get("found", False)),
                     "confidence": getattr(det, "confidence", 0.0),
                     "detection": det,
+                    # Where the search ran; the replan prompt lists rooms already searched.
+                    "location": self.world_state.current_location,
                 }
             else:
                 evidence = raw_evidence
