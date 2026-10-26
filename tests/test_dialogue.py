@@ -310,26 +310,50 @@ class PlanQuestionTests(unittest.TestCase):
                          "status")
         self.assertEqual(self.dialogue.classify("uh"), "noise")
 
-    def test_reply_becomes_request_with_context(self):
-        result = self.dialogue.consume_followup("yes please")
-        self.assertTrue(result["ready"])
-        self.assertEqual(
-            result["goal"],
-            "Earlier request: Fly through the wall to Office B. "
-            f"I asked: {self.QUESTION} The user answered: yes please.",
-        )
-        self.assertFalse(self.dialogue.state.awaiting_clarification)
+    def test_yes_turns_the_offer_into_the_request(self):
+        for reply in ("yes please", "sure", "yeah go ahead", "okay"):
+            self.dialogue.expect_plan_answer(
+                "Fly through the wall to Office B", self.QUESTION)
+            result = self.dialogue.consume_followup(reply)
+            self.assertEqual(result["goal"], "drive to the meeting room", reply)
+            self.assertFalse(self.dialogue.awaiting_plan_answer)
 
     def test_short_yes_no_transcript_is_preferred(self):
         # Open recognition misheard "yes"; the yes/no recogniser did not.
         result = self.dialogue.consume_followup("yet", answer="yes")
-        self.assertIn("The user answered: yes.", result["goal"])
+        self.assertEqual(result["goal"], "drive to the meeting room")
 
-    def test_open_transcript_kept_for_task_replies(self):
+    def test_other_reply_becomes_the_new_request(self):
         result = self.dialogue.consume_followup(
             "no go to the lab instead", answer="no")
-        self.assertIn("The user answered: no go to the laboratory instead.",
-                      result["goal"])
+        self.assertEqual(result["goal"], "go to the laboratory instead")
+        self.assertFalse(result.get("ready"))
+
+    def test_plain_no_is_handled_without_planning(self):
+        for reply in ("no", "no thanks", "nope", "no thank you", "I don't want that"):
+            self.dialogue.expect_plan_answer("Fly to Office B", self.QUESTION)
+            result = self.dialogue.consume_followup(reply)
+            self.assertIsNone(result["goal"], reply)
+            self.assertTrue(result.get("declined"), reply)
+            self.assertEqual(result["question"], "Okay, I will leave it there.")
+            self.assertFalse(self.dialogue.awaiting_plan_answer)
+
+    def test_unrelated_reply_reasks(self):
+        result = self.dialogue.consume_followup("please")
+        self.assertIsNone(result["goal"])
+        self.assertIn("Should I drive", result["question"])
+        self.assertTrue(self.dialogue.awaiting_plan_answer)
+
+    def test_yes_without_offer_gives_planner_the_context(self):
+        self.dialogue.expect_plan_answer("Go to the roof", "Is that okay?")
+        result = self.dialogue.consume_followup("yes")
+        self.assertTrue(result["ready"])
+        self.assertEqual(
+            result["goal"],
+            "Earlier request: Go to the roof. I asked: Is that okay? "
+            "The user answered: yes.")
+        followup = self.dialogue.analyse_for_missing_information(result["goal"])
+        self.assertFalse(followup["needs_clarification"])
 
     def test_empty_reply_reasks(self):
         result = self.dialogue.consume_followup("", answer="")
@@ -341,14 +365,6 @@ class PlanQuestionTests(unittest.TestCase):
         for word in ("yes", "no", "stop", "[unk]"):
             self.assertIn(word, words)
 
-    def test_followup_goal_needs_no_clarification(self):
-        goal = self.dialogue.consume_followup("yes")["goal"]
-        result = self.dialogue.analyse_for_missing_information(goal)
-        self.assertFalse(result["needs_clarification"])
-        self.assertEqual(result["goal"], goal)
-
-
-class StatusTests(unittest.TestCase):
     def world(self, **overrides):
         state = {
             "current_location": "reception",

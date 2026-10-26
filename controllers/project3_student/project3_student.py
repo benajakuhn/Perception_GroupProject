@@ -121,11 +121,11 @@ def check_plan_question():
 
 
 def plan_goal_off_thread(user_goal: str) -> dict:
-    """Asynchronous language-only planning in worker thread."""
-    ambiguity = dialogue.analyse_for_missing_information(user_goal)
-    if ambiguity.get("needs_clarification"):
-        return {"kind": "clarification", "question": ambiguity.get("question")}
+    """Asynchronous language-only planning in worker thread.
 
+    Clarification already happened on the main thread (handle_utterance), so
+    the dialogue state is never touched from this thread.
+    """
     try:
         plan = llm.generate_plan(user_goal, world_state.as_dict())
         valid, errors = validator.validate(plan)
@@ -195,13 +195,15 @@ def handle_utterance(heard: dict):
         speech.speak(f"I am busy with: {world_state.current_goal}. Say stop if you want me to cancel it.")
         return
     elif kind == "answer":
+        was_plan_answer = dialogue.awaiting_plan_answer
         followup = dialogue.consume_followup(heard.get("text", ""), heard.get("answer", ""))
+        if was_plan_answer and not dialogue.awaiting_plan_answer:
+            clear_plan_question()   # answered (or declined): stop waiting
         if followup.get("goal") is None:
             speech.speak(followup.get("question"))
             return
         if followup.get("ready"):
             # Reply to a plan's question: plan again with the reply as context.
-            clear_plan_question()
             speech.speak("Okay.")
             submit_goal(followup["goal"])
             return

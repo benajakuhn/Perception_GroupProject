@@ -119,6 +119,28 @@ PLAN_ANSWER_WORDS = [
     "yes", "yeah", "yep", "sure", "okay", "ok", "please", "do", "it",
     "no", "nope", "not", "dont", "thanks", "thank", "you",
 ]
+# A reply made only of these words, with at least one DECLINE_WORD, is a plain
+# "no": handled here, since a small planner model often reads "no thanks" as yes.
+DECLINE_WORDS = {"no", "nope", "nah", "not", "dont"}
+DECLINE_FILLERS = {"thanks", "thank", "you", "please", "ok", "okay", "i", "do",
+                   "that", "it", "want", "to", "rather", "the", "a", "need"}
+DECLINE_REPLY = "Okay, I will leave it there."
+# A reply made only of these words, with at least one ACCEPT_WORD, is a "yes".
+ACCEPT_WORDS = {"yes", "yeah", "yep", "sure", "ok", "okay", "alright", "fine",
+                "ahead", "absolutely", "definitely"}
+ACCEPT_FILLERS = {"please", "do", "it", "that", "go", "sounds", "good", "great",
+                  "thanks", "thank", "you", "i", "would", "like", "the", "a"}
+# The offer in a plan's question: "Should I drive to the meeting room instead?"
+OFFER_PATTERN = re.compile(
+    r"\b(?:should|shall|can|may) I (.+?)(?:\s+instead)?\s*\?\s*$"
+    r"|\bwant me to (.+?)(?:\s+instead)?\s*\?\s*$",
+    re.IGNORECASE,
+)
+# Leading words of a reply such as "no, go to the lab instead".
+REPLY_LEAD_PATTERN = re.compile(
+    r"^\s*(?:(?:no|nope|nah|actually|well|but|ok|okay|then|rather)\b[\s,.!]*)+",
+    re.IGNORECASE,
+)
 # Goals built from a plan question start with this; they need no further
 # clarification, since the planner already asked what it needed to know.
 FOLLOWUP_PREFIX = "Earlier request:"
@@ -416,11 +438,20 @@ class DialogueManager:
         return self._retry_answer()
 
     def _consume_plan_answer(self, text: str, answer: str = None) -> dict:
-        """Turn the reply to a plan question into a new request for the planner.
+        """Turn the reply to a plan question into an ordinary request.
 
-        The open transcript is used when it mentions anything task-related
-        ("go to the lab instead"); otherwise the yes/no recogniser's transcript
-        is preferred, as it hears short replies more reliably.
+        - "no", "no thanks": nothing to plan (DECLINE_REPLY).
+        - "yes", "sure": the offer in the question becomes the request
+          ("Should I drive to the meeting room instead?" -> "drive to the
+          meeting room").
+        - anything else ("no, go to the lab instead"): the reply itself is the
+          new request and gets the usual clarification checks.
+        The planner therefore only sees ordinary requests, which it handles far
+        more reliably than a question-and-answer transcript.
+
+        The open transcript is used when it mentions anything task-related;
+        otherwise the yes/no recogniser's transcript is preferred, as it hears
+        short replies more reliably.
         """
         reply = text
         if answer and not self.is_relevant(self.extract_slots(text or "")):
@@ -428,7 +459,26 @@ class DialogueManager:
         reply = planner_text((reply or "").strip())
         if not reply:
             return self._retry_answer()
+        words = set(normalise(reply).split())
+        if words & DECLINE_WORDS and words <= DECLINE_WORDS | DECLINE_FILLERS:
+            self.state = DialogueState()
+            return {"goal": None, "question": DECLINE_REPLY, "declined": True}
 
+        if words & ACCEPT_WORDS and words <= ACCEPT_WORDS | ACCEPT_FILLERS:
+            offer = OFFER_PATTERN.search(self.state.question or "")
+            if offer:
+                self.state = DialogueState()
+                return {"goal": (offer.group(1) or offer.group(2)).strip(),
+                        "question": None}
+        else:
+            request = REPLY_LEAD_PATTERN.sub("", reply).strip()
+            if not request or not self.is_relevant(self.extract_slots(request)):
+                return self._retry_answer()
+            self.state = DialogueState()
+            return {"goal": request, "question": None}
+
+        # A "yes" to a question without a recognisable offer: give the planner
+        # the question and the answer.
         def part(value):
             return (value or "").strip().rstrip(".")[:MAX_FOLLOWUP_PART_LENGTH]
 
