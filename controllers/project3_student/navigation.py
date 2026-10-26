@@ -149,7 +149,7 @@ class Navigator:
         # Obstacle Avoidance Logic
         if self.front_is_blocked(threshold=100.0):
             # If the robot is blocked by the target, stop and return SUCCEEDED
-            if self.waypoint_index == len(self.waypoints) - 1 and dist < 0.75:
+            if self.waypoint_index == len(self.waypoints) - 1 and dist < 0.4:
                 self.stop()
                 self._record_evidence("stopped at an obstacle close to the target", x, y)
                 self.active_location = None
@@ -157,7 +157,7 @@ class Navigator:
 
             # Start a new avoidance maneuver if not currently executing one
             if self.avoidance_timer <= 0:
-                self.avoidance_timer = 80  # Drive around for roughly 60 controller steps
+                self.avoidance_timer = 60 # Drive around for roughly 60 controller steps
                 left_val = max(self.proximity[6].getValue(), self.proximity[7].getValue())
                 right_val = max(self.proximity[0].getValue(), self.proximity[1].getValue())
                 # Turn Right (1) if obstacle is on the left, else Turn Left (-1)
