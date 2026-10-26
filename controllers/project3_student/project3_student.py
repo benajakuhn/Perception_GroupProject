@@ -165,6 +165,7 @@ def submit_goal(user_goal: str):
 
     world_state.current_goal = user_goal
     world_state.replan_count = 0
+    world_state.search_results = []   # reports cover this task only
     print("[USER GOAL]", user_goal)
     planning_future = worker.submit(plan_goal_off_thread, user_goal)
 

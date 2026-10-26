@@ -15,6 +15,9 @@ class WorldState:
         # Question asked by a plan's "ask" step, awaiting the user's reply.
         # Set by RobotSkills; cleared by the main loop once answered.
         self.pending_question = None
+        # Outcome of every search in the current task, for truthful reports:
+        # [{"target": "red ball", "location": ..., "result": FOUND|NOT_FOUND|UNCERTAIN}]
+        self.search_results = []
 
     def as_dict(self):
         return {

@@ -155,5 +155,64 @@ class AskStepTests(unittest.TestCase):
         self.assertIsNone(self.world_state.pending_question)
 
 
+
+class ReportTests(unittest.TestCase):
+    """A report after searches states what the camera actually found."""
+
+    class FakePerception:
+        def __init__(self, outcomes):
+            self.outcomes = list(outcomes)
+
+        def start_search(self, object_type, colour):
+            pass
+
+        def update_search(self):
+            outcome = self.outcomes.pop(0)
+            return "SUCCEEDED", {"outcome": outcome, "found": outcome == "FOUND",
+                                 "detection": None}
+
+    def run_plan(self, outcomes, rooms):
+        from robot_skills import RobotSkills
+        from semantic_memory import SemanticMemory
+        world_state = WorldState()
+        speech = FakeSpeech()
+        skills = RobotSkills(None, self.FakePerception(outcomes), SemanticMemory(),
+                             speech, world_state)
+        executive = TaskExecutive(skills, world_state)
+        steps = []
+        for room in rooms:
+            steps.append({"action": "search", "object": "ball", "colour": "red",
+                          "_room": room})
+        steps.append({"action": "report",
+                      "message": "Tell the user whether the red ball was found."})
+        executive.start({"steps": steps})
+        while executive.active:
+            step = executive.steps[executive.step_index] if executive.step_index < len(executive.steps) else {}
+            world_state.current_location = step.get("_room", world_state.current_location)
+            executive.update()
+        return speech.spoken[-1]
+
+    def test_found(self):
+        said = self.run_plan(["NOT_FOUND", "FOUND"], ["laboratory", "meeting_room"])
+        self.assertEqual(said, "I found the red ball in the meeting room.")
+
+    def test_not_found_is_not_claimed_absent(self):
+        said = self.run_plan(["NOT_FOUND", "NOT_FOUND"], ["laboratory", "office_a"])
+        self.assertEqual(said, "I searched the laboratory and Office A and did not "
+                               "find the red ball there.")
+
+    def test_uncertain(self):
+        said = self.run_plan(["UNCERTAIN"], ["office_b"])
+        self.assertEqual(said, "I may have seen the red ball in Office B, but I am not sure.")
+
+    def test_report_without_search_uses_plan_message(self):
+        world_state = WorldState()
+        speech = FakeSpeech()
+        from robot_skills import RobotSkills
+        RobotSkills(None, None, None, speech, world_state).start(
+            {"action": "report", "message": "I cannot fly."})
+        self.assertEqual(speech.spoken, ["I cannot fly."])
+
+
 if __name__ == "__main__":
     unittest.main()

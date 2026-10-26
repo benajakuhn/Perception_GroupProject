@@ -187,11 +187,11 @@ def planner_text(text: str) -> str:
     return _PLANNER_PATTERN.sub(replace, text)
 
 
-def join_options(options) -> str:
+def join_options(options, conjunction: str = "or") -> str:
     options = list(options)
     if len(options) == 1:
         return options[0]
-    return ", ".join(options[:-1]) + " or " + options[-1]
+    return ", ".join(options[:-1]) + f" {conjunction} " + options[-1]
 
 
 class DialogueManager:

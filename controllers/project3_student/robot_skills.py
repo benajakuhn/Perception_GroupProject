@@ -1,4 +1,5 @@
 """Deterministic, non-blocking skills available to validated plans."""
+from nlu_dialogue import join_options, location_name
 
 
 class RobotSkills:
@@ -42,8 +43,11 @@ class RobotSkills:
             self.last_evidence = {"asked": step["question"]}
             return "SUCCEEDED"
         elif action == "report":
-            self.speech.speak(step["message"])
-            self.last_evidence = {"reported": step["message"]}
+            # The plan was written before any search ran, so its message cannot
+            # know the outcome; after a search, report what the camera found.
+            message = self._search_summary() or step["message"]
+            self.speech.speak(message)
+            self.last_evidence = {"reported": message}
             return "SUCCEEDED"
         elif action == "stop":
             self.navigator.cancel()
@@ -95,6 +99,12 @@ class RobotSkills:
 
             self.world_state.last_search_result = evidence
             self.last_evidence = evidence
+            if status == "SUCCEEDED" and isinstance(evidence, dict):
+                self.world_state.search_results.append({
+                    "target": self._target_name(),
+                    "location": self.world_state.current_location,
+                    "result": evidence.get("result", "NOT_FOUND"),
+                })
             if status == "SUCCEEDED":
                 if isinstance(evidence, dict) and evidence.get("found"):
                     conf = evidence.get("confidence", 1.0)
@@ -112,6 +122,32 @@ class RobotSkills:
 
         else:
             return "FAILED"
+
+    def _target_name(self) -> str:
+        parts = (self.active_step.get("colour"), self.active_step.get("object"))
+        return " ".join(part for part in parts if part)
+
+    def _search_summary(self):
+        """Truthful sentence about this task's searches, or None if none ran."""
+        results = self.world_state.search_results
+        if not results:
+            return None
+        target = results[-1]["target"]
+        results = [r for r in results if r["target"] == target]
+        found = [r["location"] for r in results if r["result"] == "FOUND"]
+        if found:
+            return f"I found the {target} in {location_name(found[-1])}."
+        sentences = []
+        unsure = [r["location"] for r in results if r["result"] == "UNCERTAIN"]
+        searched = [r["location"] for r in results if r["result"] == "NOT_FOUND"]
+        if unsure:
+            places = join_options((location_name(loc) for loc in dict.fromkeys(unsure)), "or")
+            sentences.append(f"I may have seen the {target} in {places}, "
+                             "but I am not sure.")
+        if searched:
+            places = join_options((location_name(loc) for loc in dict.fromkeys(searched)), "and")
+            sentences.append(f"I searched {places} and did not find the {target} there.")
+        return " ".join(sentences)
 
     def _navigation_evidence(self, target: str, status: str) -> dict:
         """Navigator evidence (R4) if it provides any, else what is known here."""
