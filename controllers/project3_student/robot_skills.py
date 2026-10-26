@@ -9,10 +9,13 @@ class RobotSkills:
         self.speech = speech
         self.world_state = world_state
         self.active_step = None
+        # Evidence for the current step only; read by TaskExecutive for the trace.
+        self.last_evidence = None
 
     def start(self, step: dict) -> str:
         """Start one already-validated symbolic action."""
         self.active_step = step
+        self.last_evidence = None
         action = step["action"]
         if action == "navigate":
             return self.navigator.start(step["location"])
@@ -30,12 +33,15 @@ class RobotSkills:
                 self.world_state.notes.append(
                     f"Observed {len(detections)} object(s) at {self.world_state.current_location}"
                 )
+            self.last_evidence = {"detections": len(detections)}
             return "SUCCEEDED"
         elif action == "ask":
             self.speech.speak(step["question"])
+            self.last_evidence = {"asked": step["question"]}
             return "SUCCEEDED"
         elif action == "report":
             self.speech.speak(step["message"])
+            self.last_evidence = {"reported": step["message"]}
             return "SUCCEEDED"
         elif action == "stop":
             self.navigator.cancel()
@@ -60,9 +66,11 @@ class RobotSkills:
                     self.world_state.route_status = "BLOCKED"
                     if target not in self.world_state.blocked_routes:
                         self.world_state.blocked_routes.append(target)
-                    return "BLOCKED"
+                    status = "BLOCKED"
                 else:
                     self.world_state.route_status = "FAILED"
+            if status != "RUNNING":
+                self.last_evidence = self._navigation_evidence(target, status)
             return status
 
         elif action == "search":
@@ -83,6 +91,7 @@ class RobotSkills:
                 evidence = raw_evidence
 
             self.world_state.last_search_result = evidence
+            self.last_evidence = evidence
             if status == "SUCCEEDED":
                 if isinstance(evidence, dict) and evidence.get("found"):
                     conf = evidence.get("confidence", 1.0)
@@ -100,6 +109,12 @@ class RobotSkills:
 
         else:
             return "FAILED"
+
+    def _navigation_evidence(self, target: str, status: str) -> dict:
+        """Navigator evidence (R4) if it provides any, else what is known here."""
+        evidence = {"target": target, "outcome": status}
+        evidence.update(getattr(self.navigator, "last_evidence", None) or {})
+        return evidence
 
     def cancel(self):
         self.navigator.cancel()

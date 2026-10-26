@@ -37,6 +37,8 @@ class Navigator:
         self.waypoints = []
         self.waypoint_index = 0
         self.steps = 0
+        # Why the last navigation ended; read by RobotSkills for the trace.
+        self.last_evidence = None
 
     def stop(self):
         self.left_motor.setVelocity(0.0)
@@ -54,6 +56,7 @@ class Navigator:
         self.active_location = location
         self.waypoint_index = 0
         self.steps = 0
+        self.last_evidence = None
 
         # get nodes from the graph
         nodes = self.graph["nodes"]
@@ -110,14 +113,15 @@ class Navigator:
             return FAILED
 
 
+        # get current position
+        x, y, _ = self.gps.getValues()
+
         # check for timeout
         self.steps += 1
         if self.steps > 3000:
             self.stop()
+            self._record_evidence("no arrival within 3000 steps", x, y)
             return FAILED
-
-        # get current position
-        x, y, _ = self.gps.getValues()
         # get current target x,y position
         tx, ty = self.waypoints[self.waypoint_index]
         # store distance from target
@@ -130,6 +134,7 @@ class Navigator:
             # if all waypoints completed, goal is reached, stop and return SUCCEEDED
             if self.waypoint_index >= len(self.waypoints):
                 self.stop()
+                self._record_evidence("arrived", x, y)
                 self.active_location = None
                 return SUCCEEDED
             # update target x,y for next waypoint
@@ -153,8 +158,10 @@ class Navigator:
             self.stop()
             # If blocked by the ball and close to the target, consider navigation succeeded
             if self.waypoint_index == len(self.waypoints) - 1 and dist < 0.75:
+                self._record_evidence("stopped at an obstacle close to the target", x, y)
                 self.active_location = None
                 return SUCCEEDED
+            self._record_evidence("front obstacle", x, y)
             return FAILED
 
         # if error is small drive forward with steering
@@ -165,6 +172,13 @@ class Navigator:
         self.left_motor.setVelocity(left_speed)
         self.right_motor.setVelocity(right_speed)
         return RUNNING
+
+    def _record_evidence(self, reason: str, x: float, y: float):
+        self.last_evidence = {
+            "reason": reason,
+            "position": [round(x, 2), round(y, 2)],
+            "elapsed_steps": self.steps,
+        }
 
     def front_is_blocked(self, threshold=80.0) -> bool:
         return max(self.proximity[i].getValue() for i in (0, 1, 6, 7)) > threshold

@@ -58,15 +58,19 @@ class TaskExecutive:
 
         if status == SUCCEEDED:
             self.trace[-1]["status"] = SUCCEEDED
-            self.trace[-1]["evidence"] = self.world_state.last_search_result or "OK"
+            self.trace[-1]["evidence"] = self._step_evidence() or "OK"
             self.step_index += 1
             return RUNNING
         elif status in {FAILED, TIMEOUT, BLOCKED}:
-            return self._finish(status, evidence=self.world_state.last_search_result or status)
+            return self._finish(status, evidence=self._step_evidence() or status)
         elif status == RUNNING:
             return RUNNING
         else:
             return self._finish(FAILED, evidence=f"Unexpected status {status!r}")
+
+    def _step_evidence(self):
+        """Evidence reported by the skill for the step that just ran."""
+        return getattr(self.skills, "last_evidence", None)
 
     def active_step_started(self) -> bool:
         return bool(
