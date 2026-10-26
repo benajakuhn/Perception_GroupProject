@@ -453,7 +453,7 @@ class ReplanFromExecutiveTraceTests(unittest.TestCase):
         def update(self):
             if self.target == "office_b":
                 self.last_evidence = {"reason": "front obstacle"}
-                return "FAILED"
+                return "BLOCKED"  # the navigator decides BLOCKED itself
             self.last_evidence = {"reason": "arrived"}
             return "SUCCEEDED"
 
