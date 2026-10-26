@@ -11,6 +11,7 @@ import math
 RUNNING = "RUNNING"
 SUCCEEDED = "SUCCEEDED"
 FAILED = "FAILED"
+BLOCKED = "BLOCKED"
 
 class Navigator:
     def __init__(self, robot, left_motor, right_motor, timestep):
@@ -147,7 +148,7 @@ class Navigator:
             dist = math.hypot(tx - x, ty - y)
 
         # Obstacle Avoidance Logic
-        if self.front_is_blocked(threshold=100.0):
+        if self._front_is_blocked(threshold=100.0):
             # If the robot is blocked by the target, stop and return SUCCEEDED
             if self.waypoint_index == len(self.waypoints) - 1 and dist < 0.4:
                 self.stop()
@@ -171,6 +172,7 @@ class Navigator:
                 self.left_motor.setVelocity(left_speed)
                 self.right_motor.setVelocity(right_speed)
                 return RUNNING
+            return BLOCKED
 
         # Compute heading from compass and angular error to target waypoint
         cx, cy, _ = self.compass.getValues()
@@ -201,7 +203,7 @@ class Navigator:
             "elapsed_steps": self.steps,
         }
 
-    def front_is_blocked(self, threshold=100.0) -> bool:
+    def _front_is_blocked(self, threshold=100.0) -> bool:
         return max(self.proximity[i].getValue() for i in (0, 1, 6, 7)) > threshold
 
     def cancel(self):
