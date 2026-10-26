@@ -10,3 +10,4 @@ logs/*.jsonl
 logs/*.log
 models/vosk-model*/
 models/*.zip
+logs/frames/

@@ -1,5 +1,11 @@
-"""Camera-based object-search skeleton."""
+"""Camera-based object search.
+
+Set PERCEPTION_SAVE_FRAMES=1 to save every 10th search frame to logs/frames/
+for checking the thresholds against real camera images.
+"""
+import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, List
 
 import numpy as np
@@ -14,9 +20,13 @@ class Detection:
     image_x: Optional[float] = None
 
 class ObjectPerception:
-    MIN_AREA = 1500.0
+    # Thresholds measured on 320x240 frames (tests/test_perception.py): the
+    # ball scores circularity ~0.90 and fill ~0.97; the red box 0.75-0.79 and
+    # 0.62-0.67, whether seen face-on or at an angle.
+    MIN_AREA = 500.0           # ball still detected ~2.5 m away
     REF_AREA = 5000.0
-    MIN_CIRCULARITY = 0.65
+    MIN_CIRCULARITY = 0.82
+    MIN_FILL = 0.80            # contour area / area of its enclosing circle
     MAX_SEARCH_FRAMES = 200
     FOUND_CONFIDENCE = 0.70
 
@@ -91,6 +101,13 @@ class ObjectPerception:
             if circularity < self.MIN_CIRCULARITY:
                 continue
 
+            # a ball fills its enclosing circle; a box (square or hexagon
+            # outline) fills at most about two thirds of it
+            _, radius = cv2.minEnclosingCircle(contour)
+            fill = area / (np.pi * radius * radius) if radius > 0 else 0.0
+            if fill < self.MIN_FILL:
+                continue
+
             # find the bounding box around the contour
             x, y, w, h = cv2.boundingRect(contour)
 
@@ -101,8 +118,10 @@ class ObjectPerception:
             # score the object based on its size relative to a reference area
             area_score = min(1.0, area / self.REF_AREA)
 
-            # combine circularity and size into a confidence score
-            confidence = min(1.0, 0.6 * circularity + 0.4 * area_score)
+            # combine shape and size into a confidence score; shape counts most,
+            # so a far but clearly round ball is still trusted
+            shape_score = min(1.0, circularity, fill)
+            confidence = min(1.0, 0.7 * shape_score + 0.3 * area_score)
 
             # store the detection with the estimated confidence and x position
             detections.append(
@@ -118,6 +137,18 @@ class ObjectPerception:
         detections.sort(key=lambda d: d.confidence, reverse=True)
         return detections
 
+
+    def _save_frame(self):
+        """Debug aid: write the current camera image to logs/frames/."""
+        image = self.camera.getImage()
+        if image is None:
+            return
+        folder = Path(__file__).resolve().parents[2] / "logs" / "frames"
+        folder.mkdir(parents=True, exist_ok=True)
+        bgra = np.frombuffer(image, dtype=np.uint8).reshape(
+            (self.camera.getHeight(), self.camera.getWidth(), 4))
+        self._saved_frames = getattr(self, "_saved_frames", 0) + 1
+        cv2.imwrite(str(folder / f"search_{self._saved_frames:04d}.png"), bgra[:, :, :3])
 
     def search_target(self, object_type: str, colour: str = None):
         """Return a detection/evidence object if the target is observed."""
@@ -153,6 +184,8 @@ class ObjectPerception:
 
         # Examine one frame & retain strongest detection so far
         self.frames_examined += 1
+        if os.environ.get("PERCEPTION_SAVE_FRAMES") and self.frames_examined % 10 == 0:
+            self._save_frame()
         detection = self.search_target(*self.target)
 
         if detection is not None:
