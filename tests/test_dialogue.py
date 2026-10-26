@@ -8,7 +8,12 @@ CONTROLLER_DIR = (
 )
 sys.path.insert(0, str(CONTROLLER_DIR))
 
-from nlu_dialogue import DialogueManager, normalise  # noqa: E402
+from nlu_dialogue import (  # noqa: E402
+    PLANNER_LOCATION_NAMES,
+    DialogueManager,
+    normalise,
+    planner_text,
+)
 
 
 class NormaliseTests(unittest.TestCase):
@@ -24,6 +29,50 @@ class NormaliseTests(unittest.TestCase):
         self.assertEqual(normalise("go to officer"), "go to office_a")
         self.assertEqual(normalise("go to have his beer"), "go to office_b")
         self.assertEqual(normalise("of his be"), "office_b")
+
+
+class PlannerTextTests(unittest.TestCase):
+    def test_rewrites_mishearings_and_nicknames(self):
+        cases = {
+            "go to officer": "go to Office A",
+            "go to have his beer": "go to Office B",
+            "find the read ball in the lab": "find the red ball in the laboratory",
+            "find the yellow books": "find the yellow box",
+            "take me to the lobby": "take me to the reception",
+            "go to the conference room": "go to the meeting room",
+            "go to the meeting": "go to the meeting room",
+            "Go to the Meeting Room": "Go to the meeting room",
+        }
+        for heard, expected in cases.items():
+            self.assertEqual(planner_text(heard), expected, heard)
+
+    def test_keeps_punctuation_and_order(self):
+        text = ("Look in the lab. If the red ball is not there, "
+                "check the meeting room.")
+        self.assertEqual(
+            planner_text(text),
+            "Look in the laboratory. If the red ball is not there, "
+            "check the meeting room.",
+        )
+
+    def test_leaves_other_words_alone(self):
+        for text in ("Go to reception", "Fly through the wall to Office B.",
+                     "go back home"):
+            self.assertEqual(planner_text(text), text)
+
+    def test_planner_names_are_known_to_location_grounding(self):
+        from location_grounding import ground_locations
+        for location_id, name in PLANNER_LOCATION_NAMES.items():
+            plan = {"steps": [{"action": "navigate", "location": name}]}
+            ground_locations(plan)
+            self.assertEqual(plan["steps"][0]["location"], location_id, name)
+
+    def test_complete_goal_is_cleaned_for_planner(self):
+        dialogue = DialogueManager()
+        result = dialogue.analyse_for_missing_information(
+            "find the read ball in officer")
+        self.assertFalse(result["needs_clarification"])
+        self.assertEqual(result["goal"], "find the red ball in Office A")
 
 
 class ClassifyTests(unittest.TestCase):
@@ -290,6 +339,16 @@ class StatusTests(unittest.TestCase):
             current_step={"action": "navigate", "location": "office_a"},
         ))
         self.assertIn("driving to Office A", text)
+
+    def test_planning_and_replanning(self):
+        planning = DialogueManager.describe_status(self.world(
+            execution_status="PLANNING", current_goal="Go to Office B"))
+        self.assertEqual(planning, "I am working out a plan for: Go to Office B.")
+        replanning = DialogueManager.describe_status(self.world(
+            execution_status="PLANNING", current_goal="Find the red ball",
+            replan_count=1))
+        self.assertIn("revising my plan for: Find the red ball", replanning)
+        self.assertNotIn("could not complete", replanning)
 
     def test_failed_and_cancelled(self):
         failed = DialogueManager.describe_status(

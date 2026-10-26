@@ -141,7 +141,11 @@ def handle_utterance(heard: dict):
         return
     elif kind == "status":
         state = world_state.as_dict()
-        if not is_busy() and state["execution_status"] == "IDLE":
+        if planning_future is not None and not executive.active:
+            # (Re)planning: a FAILED/CANCELLED status left from before is stale.
+            state["execution_status"] = "PLANNING"
+        elif not is_busy() and state["execution_status"] == "IDLE":
+            # A goal left over from rejected or failed planning is not active.
             state["current_goal"] = None
         speech.speak(dialogue.describe_status(state))
         return

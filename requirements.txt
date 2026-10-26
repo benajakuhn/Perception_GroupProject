@@ -23,6 +23,10 @@ llama-cpp-python==0.3.36
 # Download:   https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf
 # Model page: https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF
 #
+# Speech model (R1): vosk-model-small-en-us-0.15 (about 40 MB)
+# Download: https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+# Unzip it into models/ (or ~/Documents/vosk-models/, or set VOSK_MODEL_PATH).
+#
 # ---------------------------------------------------------------------------
 # Setting up and running the planner (run every command from the project folder)
 # ---------------------------------------------------------------------------

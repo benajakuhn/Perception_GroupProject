@@ -138,6 +138,43 @@ def location_name(location: str) -> str:
     return LOCATION_NAMES.get(location, location.replace("_", " "))
 
 
+# Names the planner's location grounding (location_grounding.py) recognises.
+PLANNER_LOCATION_NAMES = {
+    "reception": "reception",
+    "office_a": "Office A",
+    "office_b": "Office B",
+    "laboratory": "laboratory",
+    "meeting_room": "meeting room",
+    "main_corridor": "main corridor",
+}
+_PLANNER_REPLACEMENTS = {
+    **{phrase: PLANNER_LOCATION_NAMES[loc] for phrase, loc in LOCATION_PHRASES.items()},
+    **WORD_SYNONYMS,
+}
+# One pass, longest phrase first, so "meeting room" is not turned into
+# "meeting room room" by the shorter "meeting".
+_PLANNER_PATTERN = re.compile(
+    r"\b(" + "|".join(
+        re.escape(phrase).replace(r"\ ", r"\s+")
+        for phrase in sorted(_PLANNER_REPLACEMENTS, key=len, reverse=True)
+    ) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def planner_text(text: str) -> str:
+    """Rewrite nicknames and known mishearings into names the planner knows.
+
+    "go to officer" -> "go to Office A", "find the read ball" -> "find the
+    red ball". Punctuation and word order are kept, since they matter for
+    sequences and conditions.
+    """
+    def replace(match):
+        key = " ".join(match.group(0).lower().split())
+        return _PLANNER_REPLACEMENTS[key]
+    return _PLANNER_PATTERN.sub(replace, text)
+
+
 def join_options(options) -> str:
     options = list(options)
     if len(options) == 1:
@@ -252,7 +289,8 @@ class DialogueManager:
         """Return explicit ambiguity/missing-information signals.
 
         The result always has 'needs_clarification' and 'question'. 'goal' is
-        the text to plan from, possibly completed from dialogue context.
+        the text to plan from, possibly completed from dialogue context, with
+        nicknames and mishearings rewritten by planner_text().
         """
         self.state = DialogueState()
         slots = self.extract_slots(text)
@@ -302,7 +340,8 @@ class DialogueManager:
             )
 
         self.context.update(slots["pairs"])
-        return {"needs_clarification": False, "question": None, "goal": text}
+        return {"needs_clarification": False, "question": None,
+                "goal": planner_text(text)}
 
     def _ask(self, text: str, topic: str, question: str) -> dict:
         self.state = DialogueState(
@@ -382,7 +421,11 @@ class DialogueManager:
     # ------------------------------------------------------------------
     @staticmethod
     def describe_status(world_state: dict) -> str:
-        """Answer "what are you doing and why?" from WorldState.as_dict() only."""
+        """Answer "what are you doing and why?" from WorldState.as_dict() only.
+
+        The main loop may pass execution_status "PLANNING" (not a WorldState
+        status) while a plan or revised plan is being generated.
+        """
         status = world_state.get("execution_status", "IDLE")
         goal = world_state.get("current_goal")
         location = location_name(world_state.get("current_location") or "unknown")
@@ -405,6 +448,10 @@ class DialogueManager:
                 "BLOCKED": "was blocked",
             }[status]
             sentences.append(f"My last task {reason}: {goal}.")
+        elif status == "PLANNING" and world_state.get("replan_count"):
+            sentences.append(
+                f"A step did not work, so I am revising my plan for: {goal}."
+            )
         elif goal:
             sentences.append(f"I am working out a plan for: {goal}.")
         else:
@@ -422,7 +469,7 @@ class DialogueManager:
                 f"These routes were blocked: {join_options(map(str, blocked))}."
             )
         replans = world_state.get("replan_count") or 0
-        if replans:
+        if replans and status != "PLANNING":
             times = "once" if replans == 1 else f"{replans} times"
             sentences.append(f"I have revised my plan {times}.")
         return " ".join(sentences)
