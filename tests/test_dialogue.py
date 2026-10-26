@@ -288,6 +288,66 @@ class FollowupTests(unittest.TestCase):
         self.assertFalse(self.dialogue.state.awaiting_clarification)
 
 
+class PlanQuestionTests(unittest.TestCase):
+    """Replies to a question asked by a plan's "ask" step."""
+
+    QUESTION = ("I cannot jump or teleport. "
+                "Should I drive to the meeting room instead?")
+
+    def setUp(self):
+        self.dialogue = DialogueManager()
+        self.dialogue.expect_plan_answer(
+            "Fly through the wall to Office B", self.QUESTION)
+
+    def test_any_reply_is_an_answer(self):
+        for text in ("yes", "yes please", "no thanks", "sure",
+                     "okay do that", "go to the lab instead"):
+            self.assertEqual(self.dialogue.classify(text), "answer", text)
+
+    def test_stop_and_status_still_work(self):
+        self.assertEqual(self.dialogue.classify("stop"), "stop")
+        self.assertEqual(self.dialogue.classify("what are you doing"),
+                         "status")
+        self.assertEqual(self.dialogue.classify("uh"), "noise")
+
+    def test_reply_becomes_request_with_context(self):
+        result = self.dialogue.consume_followup("yes please")
+        self.assertTrue(result["ready"])
+        self.assertEqual(
+            result["goal"],
+            "Earlier request: Fly through the wall to Office B. "
+            f"I asked: {self.QUESTION} The user answered: yes please.",
+        )
+        self.assertFalse(self.dialogue.state.awaiting_clarification)
+
+    def test_short_yes_no_transcript_is_preferred(self):
+        # Open recognition misheard "yes"; the yes/no recogniser did not.
+        result = self.dialogue.consume_followup("yet", answer="yes")
+        self.assertIn("The user answered: yes.", result["goal"])
+
+    def test_open_transcript_kept_for_task_replies(self):
+        result = self.dialogue.consume_followup(
+            "no go to the lab instead", answer="no")
+        self.assertIn("The user answered: no go to the laboratory instead.",
+                      result["goal"])
+
+    def test_empty_reply_reasks(self):
+        result = self.dialogue.consume_followup("", answer="")
+        self.assertIsNone(result["goal"])
+        self.assertIn("Should I drive", result["question"])
+
+    def test_expected_words_include_yes_no_and_stop(self):
+        words = self.dialogue.expected_words()
+        for word in ("yes", "no", "stop", "[unk]"):
+            self.assertIn(word, words)
+
+    def test_followup_goal_needs_no_clarification(self):
+        goal = self.dialogue.consume_followup("yes")["goal"]
+        result = self.dialogue.analyse_for_missing_information(goal)
+        self.assertFalse(result["needs_clarification"])
+        self.assertEqual(result["goal"], goal)
+
+
 class StatusTests(unittest.TestCase):
     def world(self, **overrides):
         state = {

@@ -112,6 +112,18 @@ OFFICE_ANSWERS = {
     "office_b": {"b", "be", "bee", "bear", "beer", "second"},
 }
 
+# A question asked by a plan's "ask" step. Any reply counts as the answer
+# ("yes", "no thanks", "go to the lab instead"); the planner interprets it.
+PLAN_QUESTION = "plan_question"
+PLAN_ANSWER_WORDS = [
+    "yes", "yeah", "yep", "sure", "okay", "ok", "please", "do", "it",
+    "no", "nope", "not", "dont", "thanks", "thank", "you",
+]
+# Goals built from a plan question start with this; they need no further
+# clarification, since the planner already asked what it needed to know.
+FOLLOWUP_PREFIX = "Earlier request:"
+MAX_FOLLOWUP_PART_LENGTH = 200
+
 MAX_CLARIFICATION_ATTEMPTS = 2
 
 
@@ -254,6 +266,8 @@ class DialogueManager:
             return "stop"
         if STATUS_PATTERN.search(normalised):
             return "status"
+        if self.awaiting_plan_answer:
+            return "answer"
         slots = self.extract_slots(text)
         if self.state.awaiting_clarification:
             if not (slots["search_intent"] or slots["navigation_intent"]):
@@ -261,6 +275,20 @@ class DialogueManager:
         if not self.is_relevant(slots):
             return "unknown"
         return "goal"
+
+    @property
+    def awaiting_plan_answer(self) -> bool:
+        return (self.state.awaiting_clarification
+                and self.state.clarification_topic == PLAN_QUESTION)
+
+    def expect_plan_answer(self, goal: str, question: str):
+        """Wait for the reply to a question asked by a plan's "ask" step."""
+        self.state = DialogueState(
+            pending_goal=goal or "",
+            awaiting_clarification=True,
+            clarification_topic=PLAN_QUESTION,
+            question=question,
+        )
 
     def expected_words(self):
         """Vocabulary for the recogniser while an answer is awaited, or None.
@@ -271,7 +299,10 @@ class DialogueManager:
         if not self.state.awaiting_clarification:
             return None
         topic = self.state.clarification_topic
-        if topic == "colour":
+        if topic == PLAN_QUESTION:
+            # Open recognition still runs, so longer replies are heard too.
+            words = list(PLAN_ANSWER_WORDS)
+        elif topic == "colour":
             words = self.colours + self.object_types + ["the"]
         elif topic == "object":
             words = (self.object_types + self.colours
@@ -293,6 +324,8 @@ class DialogueManager:
         nicknames and mishearings rewritten by planner_text().
         """
         self.state = DialogueState()
+        if text.startswith(FOLLOWUP_PREFIX):
+            return {"needs_clarification": False, "question": None, "goal": text}
         slots = self.extract_slots(text)
         colour_list = join_options(self.colours)
 
@@ -366,6 +399,8 @@ class DialogueManager:
         """
         if not self.state.awaiting_clarification:
             return {"goal": text, "question": None}
+        if self.awaiting_plan_answer:
+            return self._consume_plan_answer(text, answer)
 
         pending = self.state.pending_goal
         for candidate in (answer, text):
@@ -378,6 +413,32 @@ class DialogueManager:
                 self.state = DialogueState()
                 return {"goal": f"{pending.strip()} ({detail})", "question": None}
 
+        return self._retry_answer()
+
+    def _consume_plan_answer(self, text: str, answer: str = None) -> dict:
+        """Turn the reply to a plan question into a new request for the planner.
+
+        The open transcript is used when it mentions anything task-related
+        ("go to the lab instead"); otherwise the yes/no recogniser's transcript
+        is preferred, as it hears short replies more reliably.
+        """
+        reply = text
+        if answer and not self.is_relevant(self.extract_slots(text or "")):
+            reply = answer
+        reply = planner_text((reply or "").strip())
+        if not reply:
+            return self._retry_answer()
+
+        def part(value):
+            return (value or "").strip().rstrip(".")[:MAX_FOLLOWUP_PART_LENGTH]
+
+        goal = (f"{FOLLOWUP_PREFIX} {part(self.state.pending_goal)}. "
+                f"I asked: {part(self.state.question)} "
+                f"The user answered: {part(reply)}.")
+        self.state = DialogueState()
+        return {"goal": goal, "question": None, "ready": True}
+
+    def _retry_answer(self) -> dict:
         self.state.attempts += 1
         if self.state.attempts >= MAX_CLARIFICATION_ATTEMPTS:
             self.state = DialogueState()
@@ -394,6 +455,8 @@ class DialogueManager:
     def _answer_detail(self, text: str):
         """The value a follow-up gives for the pending topic, or None."""
         topic = self.state.clarification_topic
+        if topic == PLAN_QUESTION:
+            return text.strip() or None
         slots = self.extract_slots(text)
         if topic == "colour" and slots["colours"]:
             return slots["colours"][0]

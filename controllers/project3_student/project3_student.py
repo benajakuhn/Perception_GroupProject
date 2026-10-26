@@ -54,6 +54,10 @@ executive = TaskExecutive(skills, world_state)
 worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="language")
 planning_future = None
 
+# R1: how long to wait for the reply to a plan's "ask" step (simulated time).
+PLAN_QUESTION_TIMEOUT = 30.0
+plan_question_deadline = None
+
 
 def is_busy() -> bool:
     return planning_future is not None or executive.active
@@ -71,12 +75,49 @@ def stop_everything():
         planning_future = None
         world_state.current_goal = None
 
+    was_waiting = dialogue.awaiting_plan_answer
     dialogue.reset()
+    clear_plan_question()
     speech.stop_speaking()
     if was_busy:
         speech.speak("Okay, I have stopped.")
+    elif was_waiting:
+        speech.speak("Okay, I will leave it there.")
     else:
         speech.speak("Okay. I was not doing anything.")
+
+
+def clear_plan_question():
+    """Forget a question asked by a plan, once answered or abandoned."""
+    global plan_question_deadline
+    plan_question_deadline = None
+    if getattr(world_state, "pending_question", None):
+        world_state.pending_question = None
+
+
+def check_plan_question():
+    """R1: wait for the reply to a plan's "ask" step, with a time limit.
+
+    RobotSkills (R3) sets world_state.pending_question when a plan asks the
+    user something. Once the plan has finished, the dialogue waits for the
+    reply; handle_utterance() turns it into a new planning request.
+    """
+    global plan_question_deadline
+    question = getattr(world_state, "pending_question", None)
+    if not question or executive.active or planning_future is not None:
+        return
+    if plan_question_deadline is None:
+        dialogue.expect_plan_answer(world_state.current_goal, question)
+        speech.expect(dialogue.expected_words())
+        plan_question_deadline = robot.getTime() + PLAN_QUESTION_TIMEOUT
+    elif not dialogue.awaiting_plan_answer:
+        # The dialogue gave up after unclear replies, or a new task started.
+        clear_plan_question()
+    elif robot.getTime() > plan_question_deadline:
+        clear_plan_question()
+        dialogue.reset()
+        speech.expect(None)
+        speech.speak("I did not get an answer, so I will leave it there.")
 
 
 def plan_goal_off_thread(user_goal: str) -> dict:
@@ -156,6 +197,12 @@ def handle_utterance(heard: dict):
         followup = dialogue.consume_followup(heard.get("text", ""), heard.get("answer", ""))
         if followup.get("goal") is None:
             speech.speak(followup.get("question"))
+            return
+        if followup.get("ready"):
+            # Reply to a plan's question: plan again with the reply as context.
+            clear_plan_question()
+            speech.speak("Okay.")
+            submit_goal(followup["goal"])
             return
         text = followup["goal"]
 
@@ -238,6 +285,7 @@ while robot.step(TIME_STEP) != -1:
                 speech.speak(f"I could not complete the task safely due to {status.lower()}.")
 
     # 3. Speech queue polling (non-blocking) and intent routing
+    check_plan_question()
     heard = speech.poll()
     if heard:
         handle_utterance(heard)
