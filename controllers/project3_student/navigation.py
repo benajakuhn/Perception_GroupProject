@@ -11,6 +11,7 @@ import math
 RUNNING = "RUNNING"
 SUCCEEDED = "SUCCEEDED"
 FAILED = "FAILED"
+BLOCKED = "BLOCKED"
 
 class Navigator:
     def __init__(self, robot, left_motor, right_motor, timestep):
@@ -149,13 +150,13 @@ class Navigator:
             self.left_motor.setVelocity(-turn)
             self.right_motor.setVelocity(turn)
             return RUNNING
-        if self.front_is_blocked():
+        if self._front_is_blocked():
             self.stop()
             # If blocked by the ball and close to the target, consider navigation succeeded
             if self.waypoint_index == len(self.waypoints) - 1 and dist < 0.75:
                 self.active_location = None
                 return SUCCEEDED
-            return FAILED
+            return BLOCKED
 
         # if error is small drive forward with steering
         turn = 2.0 * error
@@ -166,7 +167,7 @@ class Navigator:
         self.right_motor.setVelocity(right_speed)
         return RUNNING
 
-    def front_is_blocked(self, threshold=80.0) -> bool:
+    def _front_is_blocked(self, threshold=80.0) -> bool:
         return max(self.proximity[i].getValue() for i in (0, 1, 6, 7)) > threshold
 
     def cancel(self):

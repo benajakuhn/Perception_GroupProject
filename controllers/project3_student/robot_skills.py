@@ -55,14 +55,12 @@ class RobotSkills:
             if status == "SUCCEEDED":
                 self.world_state.current_location = target
                 self.world_state.route_status = "CLEAR"
+            elif status == "BLOCKED":
+                self.world_state.route_status = "BLOCKED"
+                if target not in self.world_state.blocked_routes:
+                    self.world_state.blocked_routes.append(target)
             elif status == "FAILED":
-                if hasattr(self.navigator, "front_is_blocked") and self.navigator.front_is_blocked():
-                    self.world_state.route_status = "BLOCKED"
-                    if target not in self.world_state.blocked_routes:
-                        self.world_state.blocked_routes.append(target)
-                    return "BLOCKED"
-                else:
-                    self.world_state.route_status = "FAILED"
+                self.world_state.route_status = "FAILED"
             return status
 
         elif action == "search":
