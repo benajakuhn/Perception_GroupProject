@@ -16,16 +16,18 @@ class Detection:
 class ObjectPerception:
     MIN_AREA = 1500.0
     REF_AREA = 5000.0
-    MIN_CIRCULARITY = 0.50
-    MAX_SEARCH_FRAMES = 125
+    MIN_CIRCULARITY = 0.65
+    MAX_SEARCH_FRAMES = 200
     FOUND_CONFIDENCE = 0.70
 
-    def __init__(self, camera, timestep):
+    def __init__(self, camera, timestep, left_motor, right_motor):
         self.camera = camera
         self.camera.enable(timestep)
         self.target = None
         self.frames_examined = 0
         self.best_detection = None
+        self.left_motor = left_motor
+        self.right_motor = right_motor
 
     def detect(self) -> List[Detection]:
         """Analyse the current camera image.
@@ -159,6 +161,10 @@ class ObjectPerception:
 
             # Finish when detection is sufficiently reliable
             if detection.confidence >= self.FOUND_CONFIDENCE:
+                # Stop motors and return strong detection
+                if self.left_motor and self.right_motor:
+                    self.left_motor.setVelocity(0.0)
+                    self.right_motor.setVelocity(0.0)
                 return "SUCCEEDED", {
                     "outcome": "FOUND",
                     "found": True,
@@ -167,7 +173,15 @@ class ObjectPerception:
 
         # Continue scanning if max nr of frames not reached
         if self.frames_examined < self.MAX_SEARCH_FRAMES:
+            if self.left_motor and self.right_motor:
+                self.left_motor.setVelocity(-2.0)  # Spin to physically scan the room
+                self.right_motor.setVelocity(2.0)
             return "RUNNING", None
+
+        # Search bound reached, stop motors and evaluate
+        if self.left_motor and self.right_motor:
+            self.left_motor.setVelocity(0.0)
+            self.right_motor.setVelocity(0.0)
 
         # return weak detection if no strong detection was found after max frames
         if self.best_detection is not None:

@@ -40,6 +40,10 @@ class Navigator:
         # Why the last navigation ended; read by RobotSkills for the trace.
         self.last_evidence = None
 
+        # obstacle avoidance state variables
+        self.avoidance_timer = 0
+        self.avoidance_dir = 1
+
     def stop(self):
         self.left_motor.setVelocity(0.0)
         self.right_motor.setVelocity(0.0)
@@ -142,6 +146,32 @@ class Navigator:
             # update distance to next waypoint
             dist = math.hypot(tx - x, ty - y)
 
+        # Obstacle Avoidance Logic
+        if self.front_is_blocked(threshold=100.0):
+            # If the robot is blocked by the target, stop and return SUCCEEDED
+            if self.waypoint_index == len(self.waypoints) - 1 and dist < 0.75:
+                self.stop()
+                self._record_evidence("stopped at an obstacle close to the target", x, y)
+                self.active_location = None
+                return SUCCEEDED
+
+            # Start a new avoidance maneuver if not currently executing one
+            if self.avoidance_timer <= 0:
+                self.avoidance_timer = 80  # Drive around for roughly 60 controller steps
+                left_val = max(self.proximity[6].getValue(), self.proximity[7].getValue())
+                right_val = max(self.proximity[0].getValue(), self.proximity[1].getValue())
+                # Turn Right (1) if obstacle is on the left, else Turn Left (-1)
+                self.avoidance_dir = 1 if left_val > right_val else -1
+
+            # Execute sweeping curve to maneuver around the obstacle
+            if self.avoidance_timer > 0:
+                self.avoidance_timer -= 1
+                left_speed = 5.0 if self.avoidance_dir == 1 else 1.5
+                right_speed = 1.5 if self.avoidance_dir == 1 else 5.0
+                self.left_motor.setVelocity(left_speed)
+                self.right_motor.setVelocity(right_speed)
+                return RUNNING
+
         # Compute heading from compass and angular error to target waypoint
         cx, cy, _ = self.compass.getValues()
         heading = math.atan2(cx, cy)
@@ -154,15 +184,6 @@ class Navigator:
             self.left_motor.setVelocity(-turn)
             self.right_motor.setVelocity(turn)
             return RUNNING
-        if self.front_is_blocked():
-            self.stop()
-            # If blocked by the ball and close to the target, consider navigation succeeded
-            if self.waypoint_index == len(self.waypoints) - 1 and dist < 0.75:
-                self._record_evidence("stopped at an obstacle close to the target", x, y)
-                self.active_location = None
-                return SUCCEEDED
-            self._record_evidence("front obstacle", x, y)
-            return FAILED
 
         # if error is small drive forward with steering
         turn = 2.0 * error
@@ -180,7 +201,7 @@ class Navigator:
             "elapsed_steps": self.steps,
         }
 
-    def front_is_blocked(self, threshold=80.0) -> bool:
+    def front_is_blocked(self, threshold=100.0) -> bool:
         return max(self.proximity[i].getValue() for i in (0, 1, 6, 7)) > threshold
 
     def cancel(self):
