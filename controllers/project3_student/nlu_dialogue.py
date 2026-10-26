@@ -494,6 +494,13 @@ class DialogueManager:
         location = location_name(world_state.get("current_location") or "unknown")
         sentences = []
 
+        question = world_state.get("pending_question")
+        if question and status not in {"RUNNING", "PLANNING"}:
+            sentences.append(
+                f"I asked you: {question} I am waiting for your answer."
+            )
+            return " ".join(sentences)
+
         if status == "RUNNING":
             step = world_state.get("current_step") or {}
             sentences.append(f"I am {_step_phrase(step)}.")

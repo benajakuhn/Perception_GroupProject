@@ -12,6 +12,9 @@ class WorldState:
         self.notes = []
         self.replan_count = 0
         self.execution_status = "IDLE"
+        # Question asked by a plan's "ask" step, awaiting the user's reply.
+        # Set by RobotSkills; cleared by the main loop once answered.
+        self.pending_question = None
 
     def as_dict(self):
         return {
@@ -24,6 +27,7 @@ class WorldState:
             "notes": list(self.notes),
             "replan_count": self.replan_count,
             "execution_status": self.execution_status,
+            "pending_question": self.pending_question,
         }
 
     def get_failure_trace(self, trace: list, max_entries: int = 5) -> list:

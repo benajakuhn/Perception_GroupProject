@@ -33,6 +33,8 @@ class TaskExecutive:
         self.active = True
         self.step_ticks = 0
         self.world_state.execution_status = RUNNING
+        # A new or revised plan replaces any question from an earlier plan.
+        self.world_state.pending_question = None
 
     def update(self) -> str:
         """Run one non-blocking executive update."""

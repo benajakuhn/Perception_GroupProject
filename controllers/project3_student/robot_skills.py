@@ -37,6 +37,8 @@ class RobotSkills:
             return "SUCCEEDED"
         elif action == "ask":
             self.speech.speak(step["question"])
+            # The main loop waits for the reply and plans again with it.
+            self.world_state.pending_question = step["question"]
             self.last_evidence = {"asked": step["question"]}
             return "SUCCEEDED"
         elif action == "report":

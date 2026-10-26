@@ -400,6 +400,14 @@ class StatusTests(unittest.TestCase):
         ))
         self.assertIn("driving to Office A", text)
 
+    def test_waiting_for_answer_to_plan_question(self):
+        text = DialogueManager.describe_status(self.world(
+            execution_status="SUCCEEDED", current_goal="Go to the roof",
+            pending_question="Should I go to reception instead?"))
+        self.assertEqual(
+            text, "I asked you: Should I go to reception instead? "
+                  "I am waiting for your answer.")
+
     def test_planning_and_replanning(self):
         planning = DialogueManager.describe_status(self.world(
             execution_status="PLANNING", current_goal="Go to Office B"))

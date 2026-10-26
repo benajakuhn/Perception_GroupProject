@@ -260,7 +260,9 @@ while robot.step(TIME_STEP) != -1:
 
         if status == SUCCEEDED:
             print("[TASK SUCCEEDED]", executive.trace)
-            speech.speak("Task complete.")
+            if not world_state.pending_question:
+                # After an ask step the robot waits for the reply instead.
+                speech.speak("Task complete.")
 
         elif status in {FAILED, TIMEOUT, BLOCKED}:
             print(f"[TASK {status}]", executive.trace)

@@ -122,6 +122,38 @@ class TaskExecutiveTests(unittest.TestCase):
         self.assertEqual(self.world_state.execution_status, CANCELLED)
 
 
+
+class FakeSpeech:
+    def __init__(self):
+        self.spoken = []
+
+    def speak(self, text):
+        self.spoken.append(text)
+
+
+class AskStepTests(unittest.TestCase):
+    """An ask step records its question so the main loop can wait for a reply."""
+
+    def setUp(self):
+        from robot_skills import RobotSkills
+        self.world_state = WorldState()
+        self.speech = FakeSpeech()
+        self.skills = RobotSkills(None, None, None, self.speech, self.world_state)
+
+    def test_ask_speaks_and_records_question(self):
+        question = "Should I drive to the meeting room instead?"
+        status = self.skills.start({"action": "ask", "question": question})
+        self.assertEqual(status, SUCCEEDED)
+        self.assertEqual(self.speech.spoken, [question])
+        self.assertEqual(self.world_state.pending_question, question)
+        self.assertEqual(self.world_state.as_dict()["pending_question"], question)
+
+    def test_new_plan_clears_old_question(self):
+        self.world_state.pending_question = "Old question?"
+        executive = TaskExecutive(MockSkills(), self.world_state)
+        executive.start({"version": "1.0", "goal": "New task", "steps": []})
+        self.assertIsNone(self.world_state.pending_question)
+
+
 if __name__ == "__main__":
     unittest.main()
-
