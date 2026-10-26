@@ -15,6 +15,7 @@ Configuration (environment variables, all optional):
     SPEECH_INPUT_DEVICE   microphone index or part of its name.
     SPEECH_TTS            'say' (macOS), 'pyttsx3' or 'print' (text only).
 """
+import array
 import json
 import math
 import os
@@ -38,6 +39,16 @@ BLOCK_SIZE = 8000
 # end of its own voice (or room echo) is not recognised as a user request.
 ECHO_GUARD_SECONDS = 0.5
 QUEUE_POLL_SECONDS = 0.2
+# If no audio block in the first seconds is louder than this, the microphone
+# is almost certainly muted or blocked (e.g. macOS denied access silently).
+SILENCE_LEVEL = 40
+SILENCE_CHECK_BLOCKS = 10   # 10 x 0.5 s
+SILENCE_WARNING = (
+    "[SPEECH] WARNING: the microphone only gives silence. On macOS, Webots "
+    "cannot ask for microphone access; start Webots from the Terminal app "
+    "(/Applications/Webots.app/Contents/MacOS/webots) so it uses Terminal's "
+    "permission."
+)
 
 
 def find_model_path() -> Path:
@@ -66,6 +77,8 @@ class SpeechIO:
         self._expected = None           # set by the main loop via expect()
         self._active_expected = None    # what answer_recogniser uses
         self._answer_parts = []
+        self._blocks_checked = 0
+        self._loudest = 0
         self.input_mode = "starting" if use_microphone else "none"
         self._asr_thread = None
 
@@ -226,7 +239,20 @@ class SpeechIO:
                     data = audio.get(timeout=QUEUE_POLL_SECONDS)
                 except queue.Empty:
                     continue
+                self.check_silence(data)
                 self.process_audio(data)
+
+    def check_silence(self, data: bytes) -> bool:
+        """Warn once if the first seconds of audio are pure silence."""
+        if self._blocks_checked >= SILENCE_CHECK_BLOCKS:
+            return False
+        samples = array.array("h", data[: len(data) // 2 * 2])
+        self._loudest = max(self._loudest, max(map(abs, samples), default=0))
+        self._blocks_checked += 1
+        if self._blocks_checked == SILENCE_CHECK_BLOCKS and self._loudest < SILENCE_LEVEL:
+            print(SILENCE_WARNING)
+            return True
+        return False
 
     def process_audio(self, data: bytes):
         """Feed one audio block to the recognisers; queue completed phrases.

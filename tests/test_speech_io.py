@@ -2,6 +2,7 @@
 
 No microphone, Vosk model or speaker is needed to run these tests.
 """
+import array
 import io
 import json
 import os
@@ -147,6 +148,27 @@ class RecognitionTests(unittest.TestCase):
         self.speech.process_audio(b"\0" * 100)
         self.assertIsNone(self.speech.poll())
         self.assertEqual(recogniser.resets, 1)
+
+
+class SilenceWarningTests(unittest.TestCase):
+    def setUp(self):
+        self.speech = SpeechIO(use_microphone=False, tts_backend=lambda text: None)
+
+    def tearDown(self):
+        self.speech.close()
+
+    def blocks(self, level):
+        block = array.array("h", [level, -level] * 4000).tobytes()
+        return [block] * speech_io.SILENCE_CHECK_BLOCKS
+
+    def test_warns_once_when_microphone_is_silent(self):
+        results = [self.speech.check_silence(b) for b in self.blocks(0)]
+        self.assertEqual(results.count(True), 1)
+        self.assertFalse(self.speech.check_silence(self.blocks(0)[0]))
+
+    def test_no_warning_with_sound(self):
+        results = [self.speech.check_silence(b) for b in self.blocks(500)]
+        self.assertNotIn(True, results)
 
 
 class SayCommandTests(unittest.TestCase):
