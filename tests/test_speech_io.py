@@ -149,6 +149,15 @@ class RecognitionTests(unittest.TestCase):
         self.assertEqual(recogniser.resets, 1)
 
 
+class SayCommandTests(unittest.TestCase):
+    def test_text_starting_with_dash_is_not_an_option(self):
+        speech = SpeechIO(use_microphone=False, tts_backend=lambda text: None)
+        with mock.patch.object(speech_io.subprocess, "Popen") as popen:
+            speech._say("-r 5 hello")
+        popen.assert_called_once_with(["say", "--", "-r 5 hello"])
+        speech.close()
+
+
 class FallbackTests(unittest.TestCase):
     def test_model_path_from_environment(self):
         with tempfile.TemporaryDirectory() as folder:

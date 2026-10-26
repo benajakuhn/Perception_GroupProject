@@ -151,7 +151,9 @@ class SpeechIO:
         return self._pyttsx3
 
     def _say(self, text):
-        self._say_process = subprocess.Popen(["say", text])
+        # "--" ends the options, so text such as "-5 degrees" (planner reports
+        # are untrusted text) is spoken instead of read as a 'say' option.
+        self._say_process = subprocess.Popen(["say", "--", text])
         self._say_process.wait()
         self._say_process = None
 
