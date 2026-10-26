@@ -58,6 +58,7 @@ class LLMInterface:
             self.project_root / "config" / "llm_config.json"
         )
         self.prompt_path = self.project_root / "prompts" / "planning_prompt_template.txt"
+        self.unavailable_reason = None
         self.config = self._load_config()
         self.template = self.prompt_path.read_text(encoding="utf-8")
 
@@ -66,7 +67,6 @@ class LLMInterface:
         self.last_call = None
 
         self.backend = backend
-        self.unavailable_reason = None
         if self.backend is None:
             self._create_backend()
 
@@ -123,6 +123,7 @@ class LLMInterface:
             "parse_errors": [],
             "repairs": [],
             "backend_error": None,
+            "finish_reason": None,
             "seconds": None,
         }
 
@@ -138,9 +139,16 @@ class LLMInterface:
             self._save_call_record(call_record)
             raise
         call_record["seconds"] = round(time.monotonic() - start_time, 2)
+        finish_reason = getattr(self.backend, "last_finish_reason", None)
+        call_record["finish_reason"] = finish_reason
 
         # 2. Turn the answer text into a dict (syntax repairs only).
         plan, parse_errors, repairs = parse_plan_text(raw_text)
+        if plan is None and finish_reason == "length":
+            # Tells the log reader and the correction prompt why the JSON is broken.
+            parse_errors.append(
+                "The answer was cut off before it was complete; write a shorter plan."
+            )
 
         # 3. Map location nicknames ("corridor") to ids ("main_corridor").
         if plan is not None:
@@ -170,7 +178,8 @@ class LLMInterface:
 
     def _create_backend(self):
         if not self.config:
-            self.unavailable_reason = "No LLM configuration (config/llm_config.json)."
+            if self.unavailable_reason is None:
+                self.unavailable_reason = "No LLM configuration (config/llm_config.json)."
             return
         try:
             self.backend = create_backend(self.config, self.project_root)
@@ -185,4 +194,10 @@ class LLMInterface:
                 "config/llm_config.example.json before enabling planning."
             )
             return {}
-        return json.loads(self.config_path.read_text(encoding="utf-8"))
+        try:
+            return json.loads(self.config_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            # A typo in the config disables planning instead of the controller.
+            self.unavailable_reason = f"Invalid JSON in {self.config_path.name}: {error}"
+            print(f"[LLM] Planning disabled: {self.unavailable_reason}")
+            return {}

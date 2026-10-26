@@ -133,6 +133,60 @@ class CreateBackendTests(unittest.TestCase):
         self.assertIn("no-such-model.gguf", str(caught.exception))
 
 
+class FakeLlama:
+    """Stands in for llama_cpp.Llama: streams saved chunks or raises an error."""
+
+    def __init__(self, pieces=(), finish_reason="stop", error=None):
+        self.pieces = list(pieces)
+        self.finish_reason = finish_reason
+        self.error = error
+
+    def create_chat_completion(self, **request):
+        if self.error is not None:
+            raise self.error
+        return self._stream()
+
+    def _stream(self):
+        yield {"choices": [{"delta": {"role": "assistant"}, "finish_reason": None}]}
+        for piece in self.pieces:
+            yield {"choices": [{"delta": {"content": piece}, "finish_reason": None}]}
+        yield {"choices": [{"delta": {}, "finish_reason": self.finish_reason}]}
+
+
+class LlamaCppBackendWithFakeModelTests(unittest.TestCase):
+    """LlamaCppBackend.complete() with FakeLlama; llama-cpp is not needed."""
+
+    def setUp(self):
+        self.temporary_folder = tempfile.TemporaryDirectory()
+        model_file = Path(self.temporary_folder.name) / "fake.gguf"
+        model_file.write_bytes(b"")
+        self.backend = LlamaCppBackend({"model_path": str(model_file)}, PROJECT_ROOT)
+
+    def tearDown(self):
+        self.temporary_folder.cleanup()
+
+    def test_streamed_answer_and_finish_reason_are_returned(self):
+        self.backend.model = FakeLlama(['{"ok": ', "true}"])
+        answer = self.backend.complete("prompt")
+        show("fake stream", answer=answer, finish_reason=self.backend.last_finish_reason)
+        self.assertEqual(answer, '{"ok": true}')
+        self.assertEqual(self.backend.last_finish_reason, "stop")
+
+    def test_cut_off_answer_reports_length(self):
+        self.backend.model = FakeLlama(['{"version": "1.0", "st'], finish_reason="length")
+        self.backend.complete("prompt")
+        self.assertEqual(self.backend.last_finish_reason, "length")
+
+    def test_library_error_becomes_backend_error(self):
+        self.backend.model = FakeLlama(error=ValueError(
+            "Requested tokens (4200) exceed context window of 4096"))
+        with self.assertRaises(LLMBackendError) as caught:
+            self.backend.complete("a very long prompt")
+        show("llama-cpp error", error=caught.exception)
+        self.assertIn("exceed context window", str(caught.exception))
+        self.assertIsInstance(caught.exception.__cause__, ValueError)
+
+
 @unittest.skipUnless(real_model_is_available(),
                      "needs config/llm_config.json, the model file and llama-cpp-python")
 class RealModelTests(unittest.TestCase):

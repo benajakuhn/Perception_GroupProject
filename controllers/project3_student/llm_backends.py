@@ -69,6 +69,9 @@ class LlamaCppBackend:
             "seed": int(config.get("seed", 0)),
         }
         self.model = None  # loaded on the first complete() call, in the worker thread
+        # Why the last answer ended: "stop" (finished) or "length" (cut off at
+        # max_tokens or the context window). None when no answer was written.
+        self.last_finish_reason = None
 
     def complete(self, prompt: str) -> str:
         if self.model is None:
@@ -86,15 +89,29 @@ class LlamaCppBackend:
         # be checked while the model is still writing.
         start_time = time.monotonic()
         answer_pieces = []
-        answer_stream = self.model.create_chat_completion(**request)
-        for chunk in answer_stream:
-            answer_pieces.append(chunk["choices"][0]["delta"].get("content") or "")
-            if time.monotonic() - start_time > self.timeout_seconds:
-                answer_stream.close()
-                raise LLMTimeoutError(
-                    f"Model did not finish within {self.timeout_seconds} seconds.",
-                    partial_text="".join(answer_pieces),
-                )
+        self.last_finish_reason = None
+        try:
+            answer_stream = self.model.create_chat_completion(**request)
+            for chunk in answer_stream:
+                choice = chunk["choices"][0]
+                answer_pieces.append(choice["delta"].get("content") or "")
+                if choice.get("finish_reason"):
+                    self.last_finish_reason = choice["finish_reason"]
+                if time.monotonic() - start_time > self.timeout_seconds:
+                    answer_stream.close()
+                    raise LLMTimeoutError(
+                        f"Model did not finish within {self.timeout_seconds} seconds.",
+                        partial_text="".join(answer_pieces),
+                    )
+        except LLMBackendError:
+            raise
+        except Exception as error:
+            # llama-cpp reports problems such as a prompt longer than n_ctx as
+            # ValueError/RuntimeError; turn them into backend errors so callers
+            # log and handle them like every other model failure.
+            raise LLMBackendError(
+                f"llama-cpp failed: {type(error).__name__}: {error}"
+            ) from error
         return "".join(answer_pieces)
 
     def description(self) -> dict:

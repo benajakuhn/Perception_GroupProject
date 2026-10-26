@@ -156,7 +156,7 @@ class LoggingTests(LLMInterfaceTestCase):
         self.assertEqual(len(records), 2)
         expected_fields = {"time", "request_kind", "backend", "prompt", "raw_response",
                            "parsed_plan", "parse_errors", "repairs", "backend_error",
-                           "seconds"}
+                           "finish_reason", "seconds"}
         self.assertEqual(set(records[0]), expected_fields)
         self.assertEqual(records[0]["parsed_plan"], VALID_PLAN)
         self.assertIsNone(records[1]["parsed_plan"])
@@ -204,7 +204,36 @@ class TimeoutLoggingTests(LLMInterfaceTestCase):
         self.assertEqual(record["raw_response"], '{"version": "1.0", "steps": [\n\n\n\n')
 
 
+class CutOffBackend(MockBackend):
+    """MockBackend that reports every answer as cut off at max_tokens."""
+
+    last_finish_reason = "length"
+
+
+class CutOffAnswerTests(LLMInterfaceTestCase):
+    def test_cut_off_answer_is_explained_in_parse_errors_and_log(self):
+        interface = self.make_interface([])
+        interface.backend = CutOffBackend(['{"version": "1.0", "steps": [{"act'])
+        with self.assertRaises(PlanParseError) as caught:
+            interface.generate_plan("find the red ball", self.world_state)
+        record = self.read_log_records()[0]
+        show("cut-off answer", errors=caught.exception.errors,
+             finish_reason=record["finish_reason"])
+        self.assertIn("cut off", caught.exception.errors[-1])
+        self.assertEqual(record["finish_reason"], "length")
+
+
 class MissingModelTests(unittest.TestCase):
+    def test_invalid_config_json_does_not_crash_but_planning_raises(self):
+        with tempfile.TemporaryDirectory() as temporary_folder:
+            config_path = Path(temporary_folder) / "llm_config.json"
+            config_path.write_text('{"backend": "llama_cpp",}', encoding="utf-8")
+            interface = LLMInterface(config_path=config_path)
+        with self.assertRaises(LLMUnavailableError) as caught:
+            interface.generate_plan("go to the lab", WorldState().as_dict())
+        show("invalid config JSON", error=caught.exception)
+        self.assertIn("Invalid JSON", str(caught.exception))
+
     def test_missing_config_does_not_crash_but_planning_raises(self):
         interface = LLMInterface(config_path=PROJECT_ROOT / "no" / "such_config.json")
         with self.assertRaises(LLMUnavailableError) as caught:
