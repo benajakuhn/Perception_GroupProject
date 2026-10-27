@@ -55,6 +55,22 @@ class PlannerTextTests(unittest.TestCase):
             "check the meeting room.",
         )
 
+    def test_mishearings_from_webots_trials(self):
+        cases = {
+            "signed the ball": "find the ball",
+            "he signed the red ball in the laboratory":
+                "he find the red ball in the laboratory",
+            "find the red bull": "find the red ball",
+            "find the read all in the laboratory":
+                "find the red ball in the laboratory",
+        }
+        for heard, expected in cases.items():
+            self.assertEqual(planner_text(heard), expected, heard)
+        dialogue = DialogueManager()
+        self.assertEqual(dialogue.classify("find the red bull"), "goal")
+        result = dialogue.analyse_for_missing_information("find the red bull")
+        self.assertFalse(result["needs_clarification"])
+
     def test_leaves_other_words_alone(self):
         for text in ("Go to reception", "Fly through the wall to Office B.",
                      "go back home"):
