@@ -1,6 +1,9 @@
 """Deterministic, non-blocking skills available to validated plans."""
 from nlu_dialogue import join_options, location_name
 
+# Ranking of search outcomes when a room is searched from several viewpoints.
+OUTCOME_RANK = {"NOT_FOUND": 0, "UNCERTAIN": 1, "FOUND": 2}
+
 
 class RobotSkills:
     def __init__(self, navigator, perception, memory, speech, world_state):
@@ -12,6 +15,15 @@ class RobotSkills:
         self.active_step = None
         # Evidence for the current step only; read by TaskExecutive for the trace.
         self.last_evidence = None
+        # Extra viewpoints per room (graph nodes): furniture hides part of a
+        # room from its stop point, e.g. the meeting table hides half the
+        # meeting room. A search spins at the stop point, then at each view.
+        graph = getattr(navigator, "graph", None) or {}
+        self.search_views = graph.get("search_views", {})
+        self.views_left = []
+        self.moving_to_view = False
+        self.views_done = 0
+        self.best_search = None
 
     def start(self, step: dict) -> str:
         """Start one already-validated symbolic action."""
@@ -24,6 +36,10 @@ class RobotSkills:
             return self.navigator.start("reception")
         elif action == "search":
             self.perception.start_search(step["object"], step.get("colour"))
+            self.views_left = list(self.search_views.get(self.world_state.current_location, []))
+            self.moving_to_view = False
+            self.views_done = 0
+            self.best_search = None
             return "RUNNING"
         elif action == "observe":
             detections = self.perception.detect()
@@ -81,7 +97,7 @@ class RobotSkills:
             return status
 
         elif action == "search":
-            status, raw_evidence = self.perception.update_search()
+            status, raw_evidence = self._update_search_views()
 
             # Normalize perception evidence structure across dialogue status, replanning, and condition evaluation
             if isinstance(raw_evidence, dict):
@@ -95,6 +111,7 @@ class RobotSkills:
                     "detection": det,
                     # Where the search ran; the replan prompt lists rooms already searched.
                     "location": self.world_state.current_location,
+                    "views_done": self.views_done,
                 }
             else:
                 evidence = raw_evidence
@@ -124,6 +141,46 @@ class RobotSkills:
 
         else:
             return "FAILED"
+
+    def _update_search_views(self):
+        """One step of a search over the room's viewpoints: (status, evidence).
+
+        Bounded: K frames per view (ObjectPerception) times the room's views.
+        Stops at the first FOUND; otherwise returns the best evidence seen.
+        """
+        if self.moving_to_view:
+            status = self.navigator.update()
+            if status == "RUNNING":
+                return "RUNNING", None
+            self.moving_to_view = False
+            if status != "SUCCEEDED":
+                # Could not reach the view: report what was seen so far.
+                self.views_left = []
+                return "SUCCEEDED", self.best_search
+            target = self.active_step
+            self.perception.start_search(target["object"], target.get("colour"))
+            return "RUNNING", None
+
+        status, evidence = self.perception.update_search()
+        if status != "SUCCEEDED" or not isinstance(evidence, dict):
+            return status, evidence
+        self.views_done += 1
+        if (self.best_search is None
+                or self._rank(evidence) > self._rank(self.best_search)):
+            self.best_search = evidence
+        if evidence.get("outcome") == "FOUND" or not self.views_left:
+            return "SUCCEEDED", self.best_search
+        view = self.views_left.pop(0)
+        if self.navigator.start(view) != "RUNNING":
+            return "SUCCEEDED", self.best_search
+        self.moving_to_view = True
+        return "RUNNING", None
+
+    @staticmethod
+    def _rank(evidence: dict):
+        det = evidence.get("detection")
+        return (OUTCOME_RANK.get(evidence.get("outcome"), 0),
+                getattr(det, "confidence", 0.0))
 
     def _target_name(self) -> str:
         parts = (self.active_step.get("colour"), self.active_step.get("object"))

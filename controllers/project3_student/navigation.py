@@ -102,8 +102,10 @@ class Navigator:
         self.right_motor.setVelocity(0.0)
 
     def start(self, location: str) -> str:
-        """Start a named-location task without advancing the simulation."""
-        if location not in self.locations:
+        """Start a named-location task without advancing the simulation.
+
+        Graph nodes are accepted too, for the search viewpoints in a room."""
+        if location not in self.locations and location not in self.graph["nodes"]:
             return FAILED
 
         self.active_location = location

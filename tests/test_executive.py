@@ -214,5 +214,65 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(speech.spoken, ["I cannot fly."])
 
 
+class SearchViewTests(unittest.TestCase):
+    """A room is searched from its stop point, then from its extra views."""
+
+    class FakeNavigator:
+        graph = {"search_views": {"meeting_room": ["meeting_room_view"]}}
+
+        def __init__(self, result="SUCCEEDED"):
+            self.result = result
+            self.started = []
+
+        def start(self, location):
+            self.started.append(location)
+            return "RUNNING"
+
+        def update(self):
+            return self.result
+
+        def cancel(self):
+            pass
+
+    def search(self, outcomes, navigator):
+        from robot_skills import RobotSkills
+        from semantic_memory import SemanticMemory
+        world_state = WorldState()
+        world_state.current_location = "meeting_room"
+        perception = ReportTests.FakePerception(outcomes)
+        skills = RobotSkills(navigator, perception, SemanticMemory(), FakeSpeech(), world_state)
+        status = skills.start({"action": "search", "object": "ball", "colour": "red"})
+        for _ in range(10):
+            if status != "RUNNING":
+                break
+            status = skills.update()
+        return status, skills.last_evidence, perception
+
+    def test_ball_hidden_from_stop_point_found_from_view(self):
+        # The meeting table hides the room's south side from the stop point.
+        navigator = self.FakeNavigator()
+        status, evidence, _ = self.search(["NOT_FOUND", "FOUND"], navigator)
+        self.assertEqual((status, evidence["result"]), ("SUCCEEDED", "FOUND"))
+        self.assertEqual(navigator.started, ["meeting_room_view"])
+        self.assertEqual(evidence["views_done"], 2)
+        self.assertEqual(evidence["location"], "meeting_room")
+
+    def test_found_at_stop_point_skips_the_view(self):
+        navigator = self.FakeNavigator()
+        status, evidence, _ = self.search(["FOUND"], navigator)
+        self.assertEqual(evidence["result"], "FOUND")
+        self.assertEqual(navigator.started, [])
+
+    def test_best_evidence_kept_over_views(self):
+        status, evidence, _ = self.search(["UNCERTAIN", "NOT_FOUND"], self.FakeNavigator())
+        self.assertEqual(evidence["result"], "UNCERTAIN")
+
+    def test_view_unreachable_reports_what_was_seen(self):
+        status, evidence, perception = self.search(["NOT_FOUND", "FOUND"],
+                                                   self.FakeNavigator("BLOCKED"))
+        self.assertEqual((status, evidence["result"]), ("SUCCEEDED", "NOT_FOUND"))
+        self.assertEqual(perception.outcomes, ["FOUND"])   # second view never ran
+
+
 if __name__ == "__main__":
     unittest.main()
