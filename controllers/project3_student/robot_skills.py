@@ -70,8 +70,10 @@ class RobotSkills:
             elif status == "BLOCKED":
                 # The navigator already tried every other route in the graph.
                 self.world_state.route_status = "BLOCKED"
-                if target not in self.world_state.blocked_routes:
-                    self.world_state.blocked_routes.append(target)
+                evidence = getattr(self.navigator, "last_evidence", None) or {}
+                for location in [target] + evidence.get("unreachable", []):
+                    if location not in self.world_state.blocked_routes:
+                        self.world_state.blocked_routes.append(location)
             elif status in {"FAILED", "TIMEOUT"}:
                 self.world_state.route_status = status
             if status != "RUNNING":

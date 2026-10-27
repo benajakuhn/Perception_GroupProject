@@ -63,7 +63,9 @@ class Navigator:
         self.steps = 0
         self.max_steps = 0
         self.reroutes = 0
-        # Edges found blocked; kept for later tasks, as obstacles rarely move.
+        # Edges found blocked during the current navigation. Cleared on every
+        # start(): the obstacle is movable, so a new task tries again and the
+        # sensors decide.
         self.blocked_edges = set()
         # Why the last navigation ended; read by RobotSkills for the trace.
         self.last_evidence = None
@@ -79,6 +81,7 @@ class Navigator:
 
         self.active_location = location
         self.reroutes = 0
+        self.blocked_edges = set()
         self.last_evidence = None
 
         # find the nearest graph node to the robot's current position
@@ -179,6 +182,13 @@ class Navigator:
                 return RUNNING
 
         self._record_evidence("front obstacle", x, y)
+        # Every named location the robot can no longer reach from where it is,
+        # so the planner does not try them one by one.
+        here = self.path[max(self.waypoint_index - 1, 0)]
+        self.last_evidence["unreachable"] = sorted(
+            loc for loc in self.locations
+            if loc != here and self._shortest_path(here, loc) is None
+        )
         self.active_location = None
         return BLOCKED
 

@@ -114,19 +114,37 @@ class NavigatorTests(unittest.TestCase):
         robot, navigator = make(-3.5, 2.0)
         self.assertEqual(drive(robot, navigator, "meeting_room"), SUCCEEDED)
 
-    def test_takes_bypass_when_centre_obstacle_blocks(self):
+    def test_centre_obstacle_blocks_the_north_side(self):
+        # The supplied obstacle stands on the only centre -> centre_north edge,
+        # so Office A cannot be reached: BLOCKED, for the planner to replan.
         robot, navigator = make(-0.8, -2.8, obstacles=[CENTRE_OBSTACLE])
-        self.assertEqual(drive(robot, navigator, "office_a"), SUCCEEDED)
-        self.assertLess(math.dist((robot.x, robot.y), (-3.5, 2.0)), 0.2)
-        self.assertIn(frozenset(("centre", "centre_north")), navigator.blocked_edges)
-        self.assertEqual(navigator.reroutes, 1)
+        self.assertEqual(drive(robot, navigator, "office_a"), BLOCKED)
+        self.assertEqual(navigator.last_evidence["reason"], "front obstacle")
+        self.assertIn("centre - centre_north", navigator.last_evidence["blocked_paths"])
+        self.assertEqual(navigator.last_evidence["unreachable"],
+                         ["main_corridor", "office_a", "office_b"])
+        self.assertLess(robot.y, 0.9)            # stopped before the obstacle
+        self.assertEqual((robot.left.velocity, robot.right.velocity), (0.0, 0.0))
 
-    def test_remembers_blocked_edge_for_next_task(self):
+    def test_new_task_tries_again_after_obstacle_is_moved(self):
         robot, navigator = make(-0.8, -2.8, obstacles=[CENTRE_OBSTACLE])
-        drive(robot, navigator, "office_a")
-        robot.x, robot.y = 0.0, -1.15
-        self.assertEqual(drive(robot, navigator, "main_corridor"), SUCCEEDED)
-        self.assertEqual(navigator.reroutes, 0)
+        self.assertEqual(drive(robot, navigator, "office_a"), BLOCKED)
+        robot.obstacles.clear()                  # someone moves the obstacle
+        self.assertEqual(drive(robot, navigator, "office_a"), SUCCEEDED)
+
+    def test_reroutes_when_the_map_has_another_way(self):
+        # A small map with two ways from A to C; an unknown obstacle blocks
+        # the direct one, and the robot drives back to A and takes the other.
+        robot, navigator = make(0.0, 0.0, obstacles=[(1.0, 0.0, 0.2, 0.6)])
+        navigator.locations = {"c": [2.0, 0.0]}
+        navigator.graph = {
+            "nodes": {"a": [0.0, 0.0], "b": [1.0, 1.2], "c": [2.0, 0.0]},
+            "edges": [["a", "c"], ["a", "b"], ["b", "c"]],
+        }
+        self.assertEqual(drive(robot, navigator, "c"), SUCCEEDED)
+        self.assertEqual(navigator.reroutes, 1)
+        self.assertIn(frozenset(("a", "c")), navigator.blocked_edges)
+        self.assertLess(math.dist((robot.x, robot.y), (2.0, 0.0)), 0.2)
 
     def test_blocked_when_no_route_is_left(self):
         # Something in the doorway of Office A: there is no other way in.
