@@ -70,7 +70,6 @@ class SpeechIO:
         self._closed = threading.Event()
         self._mute_until = 0.0
         self._say_process = None
-        self._engine = None
         self.recogniser = None          # open vocabulary
         self.answer_recogniser = None   # expected words only, or None
         self._recogniser_factory = None
@@ -171,11 +170,10 @@ class SpeechIO:
         self._say_process = None
 
     def _pyttsx3(self, text):
-        if self._engine is None:
-            import pyttsx3  # created here so it belongs to the TTS thread
-            self._engine = pyttsx3.init()
-        self._engine.say(text)
-        self._engine.runAndWait()
+        import pyttsx3  # created here so it belongs to the TTS thread
+        engine = pyttsx3.init()
+        engine.say(text)
+        engine.runAndWait()
 
     def _tts_loop(self):
         while not self._closed.is_set():
