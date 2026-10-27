@@ -11,7 +11,10 @@ TIMEOUT = "TIMEOUT"
 BLOCKED = "BLOCKED"
 CANCELLED = "CANCELLED"
 
-MAX_STEP_TICKS = 3500  # Timeout limit (~112 s at 32 ms timestep)
+# Backstop only: every skill has its own progress limit (navigation from the
+# route length, search from its frame count). 3500 ticks (~112 s) cut off
+# long navigations that had to back up and take another lane.
+MAX_STEP_TICKS = 15000  # ~8 min at 32 ms timestep
 
 
 class TaskExecutive:
