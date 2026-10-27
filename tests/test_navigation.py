@@ -231,6 +231,16 @@ class NavigatorTests(unittest.TestCase):
                       navigator.last_evidence["blocked_paths"])
         self.assertFalse(robot.collided)   # tried to get around without hitting a wall
 
+    def test_new_task_starts_from_the_last_node_passed(self):
+        # A Webots trial: a failed detour left the robot outside Office B's
+        # west wall. The nearest node (office_b_entry) is behind the wall, so
+        # starting there drove into it; the last node passed is a free way back.
+        robot, navigator = make(1.89, 1.93, heading=1.57)
+        navigator.last_node = "centre_north"
+        self.assertEqual(drive(robot, navigator, "office_b"), SUCCEEDED)
+        self.assertEqual(navigator.path[0], "centre_north")
+        self.assertFalse(robot.collided)
+
     def test_obstacle_next_to_target_counts_as_arrival(self):
         # A box on the approach line, about 0.2 m before the laboratory stop point.
         robot, navigator = make(-0.8, -2.8, obstacles=[(-3.37, -1.85, 0.1, 0.1)])
