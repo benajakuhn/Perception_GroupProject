@@ -12,6 +12,7 @@ from plan_schema import (
     MAX_NESTING_DEPTH,
     MAX_TEXT_LENGTH,
     MAX_TOTAL_STEPS,
+    MAX_VISITS_PER_LOCATION,
     PLAN_VERSION,
     SUPPORTED_COLOURS,
     SUPPORTED_OBJECTS,
@@ -56,8 +57,17 @@ class PlanValidator:
             errors.append("Plan must contain at least one step.")
 
         counter = [0]
-        context = {"has_searched": False, "last_location": None}
+        context = {"has_searched": False, "last_location": None, "searched_here": frozenset()}
         self._validate_steps(steps, errors, path="steps", depth=0, counter=counter, context=context)
+
+        visits = {}
+        self._count_visits(steps, visits)
+        for location, count in sorted(visits.items()):
+            if count > MAX_VISITS_PER_LOCATION:
+                errors.append(
+                    f"Plan drives to {location!r} {count} times; at most "
+                    f"{MAX_VISITS_PER_LOCATION} visits per location are allowed."
+                )
 
         if counter[0] > MAX_TOTAL_STEPS:
             errors.append(
@@ -103,6 +113,21 @@ class PlanValidator:
                     errors.append(f"{here}: the {target} was already searched for at "
                                   f"{location}; search a room not searched yet.")
 
+    def _count_visits(self, steps, visits):
+        """Navigation targets in the whole plan, both branches included."""
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            action = step.get("action")
+            if action in {"navigate", "return_home"}:
+                location = step.get("location") if action == "navigate" else "reception"
+                if isinstance(location, str):
+                    visits[location] = visits.get(location, 0) + 1
+            elif action == "conditional":
+                for branch in ("then", "else"):
+                    if isinstance(step.get(branch), list):
+                        self._count_visits(step[branch], visits)
+
     def _validate_steps(self, steps, errors, path, depth, counter, context):
         if depth > MAX_NESTING_DEPTH:
             errors.append(f"{path}: nesting depth exceeds {MAX_NESTING_DEPTH}.")
@@ -116,6 +141,10 @@ class PlanValidator:
                 continue
 
             action = step.get("action")
+            if action == "stop" and i < len(steps) - 1:
+                # TaskExecutive ends the task at a stop step.
+                errors.append(f"{here}: steps after 'stop' would never run; "
+                              "stop must be the last step of its list.")
             if action == "conditional":
                 self._validate_condition(step.get("condition"), errors, here, context)
                 for branch in ("then", "else"):
@@ -155,12 +184,14 @@ class PlanValidator:
                     errors.append(f"{here}: redundant consecutive navigation to {loc!r}.")
                 else:
                     context["last_location"] = loc
+                    context["searched_here"] = frozenset()
 
             elif action == "return_home":
                 if context.get("last_location") == "reception":
                     errors.append(f"{here}: redundant return_home; already at reception.")
                 else:
                     context["last_location"] = "reception"
+                    context["searched_here"] = frozenset()
 
             elif action == "search":
                 obj = step.get("object")
@@ -169,6 +200,11 @@ class PlanValidator:
                     errors.append(f"{here}: unsupported object {obj!r}.")
                 if colour is not None and (not isinstance(colour, str) or colour not in SUPPORTED_COLOURS):
                     errors.append(f"{here}: unsupported colour {colour!r}.")
+                target = (obj, colour)
+                if target in context["searched_here"]:
+                    errors.append(f"{here}: repeated search for the same object at the "
+                                  "same place; navigate somewhere else first.")
+                context["searched_here"] = context["searched_here"] | {target}
                 context["has_searched"] = True
 
             elif action in {"ask", "report"}:

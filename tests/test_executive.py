@@ -42,6 +42,21 @@ class TaskExecutiveTests(unittest.TestCase):
         self.skills = MockSkills()
         self.executive = TaskExecutive(self.skills, self.world_state)
 
+    def test_stop_step_ends_the_task(self):
+        # A stop chosen by a conditional branch ends the whole plan.
+        self.executive.start({"version": "1.0", "goal": "g", "steps": [
+            {"action": "conditional",
+             "condition": {"source": "route_status", "operator": "equals", "value": "CLEAR"},
+             "then": [{"action": "stop"}], "else": []},
+            {"action": "navigate", "location": "office_a"},
+        ]})
+        self.world_state.route_status = "CLEAR"
+        status = RUNNING
+        while status == RUNNING:
+            status = self.executive.update()
+        self.assertEqual(status, SUCCEEDED)
+        self.assertEqual([s["action"] for s in self.skills.started_steps], ["stop"])
+
     def test_executes_sequential_plan_to_completion(self):
         plan = {
             "version": "1.0",

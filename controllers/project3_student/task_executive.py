@@ -65,6 +65,9 @@ class TaskExecutive:
             self.trace[-1]["status"] = SUCCEEDED
             self.trace[-1]["evidence"] = self._step_evidence() or "OK"
             self.step_index += 1
+            if step.get("action") == "stop":
+                # "stop" ends the task (the validator allows no steps after it).
+                return self._finish(SUCCEEDED)
             return RUNNING
         elif status in {FAILED, TIMEOUT, BLOCKED}:
             return self._finish(status, evidence=self._step_evidence() or status)
