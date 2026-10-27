@@ -16,9 +16,6 @@
     "office_a_approach":     [-3.0, 1.7],
     "office_b_approach":     [2.8, 1.7],
     "meeting_room_approach": [3.0, -1.7],
-    "laboratory_view":       [-2.8, -3.1],
-    "office_a_view":         [-2.9, 3.1],
-    "office_b_view":         [2.4, 2.6],
     "meeting_room_west":     [2.55, -1.65],
     "meeting_room_view":     [2.5, -2.9]
   },
@@ -38,17 +35,11 @@
     ["centre_north", "office_b_entry"],
     ["office_b_entry", "office_b_approach"],
     ["office_b_approach", "office_b"],
-    ["laboratory", "laboratory_view"],
-    ["office_a", "office_a_view"],
-    ["office_b", "office_b_view"],
     ["meeting_room_approach", "meeting_room_west"],
     ["meeting_room_entry", "meeting_room_west"],
     ["meeting_room_west", "meeting_room_view"]
   ],
   "search_views": {
-    "laboratory": ["laboratory_view"],
-    "office_a": ["office_a_view"],
-    "office_b": ["office_b_view"],
     "meeting_room": ["meeting_room_view"]
   }
 }
