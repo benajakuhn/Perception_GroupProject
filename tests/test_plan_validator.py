@@ -183,5 +183,51 @@ class PlanValidatorTests(unittest.TestCase):
         self.assertTrue(any("prohibited content 'eval('" in e for e in errors))
 
 
+class RevisionCheckTests(unittest.TestCase):
+    """PlanValidator.check_revision: extra rules for a replanned remainder."""
+
+    STATE = {
+        "blocked_routes": ["office_b"],
+        "search_results": [
+            {"target": "red ball", "location": "laboratory", "result": "NOT_FOUND"},
+            {"target": "red ball", "location": "meeting_room", "result": "UNCERTAIN"},
+        ],
+    }
+
+    def check(self, steps):
+        return PlanValidator().check_revision({"version": "1.0", "goal": "g", "steps": steps},
+                                              self.STATE)
+
+    def search_in(self, room, colour="red"):
+        return [{"action": "navigate", "location": room},
+                {"action": "search", "object": "ball", "colour": colour}]
+
+    def test_room_not_searched_yet_is_accepted(self):
+        ok, errors = self.check(self.search_in("office_a")
+                                + [{"action": "report", "message": "Done."}])
+        self.assertTrue(ok, errors)
+
+    def test_searching_a_searched_room_again_is_rejected(self):
+        ok, errors = self.check(self.search_in("meeting_room"))
+        self.assertFalse(ok)
+        self.assertIn("already searched", errors[0])
+
+    def test_other_target_may_be_searched_there(self):
+        ok, errors = self.check(self.search_in("meeting_room", colour="blue"))
+        self.assertTrue(ok, errors)
+
+    def test_blocked_location_is_rejected_inside_a_conditional(self):
+        ok, errors = self.check(self.search_in("office_a") + [{
+            "action": "conditional",
+            "condition": {"source": "last_search_result", "operator": "found", "value": False},
+            "then": self.search_in("office_b"), "else": []}])
+        self.assertFalse(ok)
+        self.assertIn("office_b is blocked", errors[0])
+
+    def test_report_only_is_accepted(self):
+        ok, errors = self.check([{"action": "report", "message": "I could not get there."}])
+        self.assertTrue(ok, errors)
+
+
 if __name__ == "__main__":
     unittest.main()

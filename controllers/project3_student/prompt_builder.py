@@ -49,20 +49,28 @@ SEARCH_RESULT_WORDS = {
     "UNCERTAIN": "not sure, treat as not found",
 }
 
-# Shown only in replan prompts. Deliberately unlike the usual red-ball task so
-# the model learns the shape of a remainder plan instead of copying it.
+# Shown only in replan prompts. The small model copies the example closely,
+# so the example takes its rooms from the same "still to search" fact line
+# the real prompt has: copying the pattern then gives the right rooms.
+# (An earlier example named a fixed room, and the model searched that room
+# again although it had been searched.)
 REPLAN_EXAMPLE_SITUATION = (
-    "the robot is at office_a, the blue box was not found in office_a and "
-    "the laboratory is blocked"
+    "the blue box is wanted and the facts say "
+    "'Rooms from the plan still to search that can be reached: laboratory, office_b'"
 )
 REPLAN_EXAMPLE_PLAN = {
     "version": "1.0",
-    "goal": "find the blue box in a room that was not searched yet",
+    "goal": "find the blue box in the rooms not searched yet",
     "steps": [
-        {"action": "navigate", "location": "meeting_room"},
+        {"action": "navigate", "location": "laboratory"},
         {"action": "search", "object": "box", "colour": "blue"},
-        {"action": "report", "message": "Tell the user whether the blue box was "
-                                        "found in the meeting room."},
+        {"action": "conditional",
+         "condition": {"source": "last_search_result", "operator": "found", "value": False},
+         "then": [{"action": "navigate", "location": "office_b"},
+                  {"action": "search", "object": "box", "colour": "blue"}],
+         "else": []},
+        {"action": "report", "message": "Tell the user where the blue box was found, "
+                                        "or that it was not found."},
     ],
 }
 
@@ -125,14 +133,19 @@ def build_correction_prompt(template: str, user_goal: str, world_state: dict,
 
 
 def build_replan_prompt(template: str, original_goal: str, world_state: dict,
-                        execution_trace: list, remaining_steps: list) -> str:
+                        execution_trace: list, remaining_steps: list,
+                        rejected_plan=None, rejected_errors=None) -> str:
     """Prompt asking for a plan for the remaining work after a failure.
 
     The trace is written as short plain-language lines, and the facts the
     model must respect (where the robot is, rooms already searched, blocked
-    rooms) are worked out here, so a small model does not have to infer them.
-    Only the most recent trace entries are included, so the prompt stays
-    bounded however long the task has been running.
+    rooms, rooms still to search) are worked out here, so a small model does
+    not have to infer them. Only the most recent trace entries are shown, so
+    the prompt stays bounded; the rooms already searched come from
+    world_state["search_results"] (one short entry per search in this task),
+    because the bounded trace and a restarted plan's trace both lose older
+    searches. rejected_plan/rejected_errors: the previous revision and why
+    PlanValidator.check_revision rejected it, for one corrected attempt.
     """
     world_state = world_state or {}
     current_location = world_state.get("current_location") or "an unknown location"
@@ -149,31 +162,45 @@ def build_replan_prompt(template: str, original_goal: str, world_state: dict,
         steps_not_started = steps_not_started[1:]
     not_started_text = json.dumps(steps_not_started) if steps_not_started else "none"
 
+    # Rules and the example come first and the facts last: the small model
+    # follows what it read most recently, and it copied the example's rooms
+    # when the example came after the facts.
     revision_lines = [
         "The robot was carrying out a plan for this goal but could not finish it.",
-        "What happened so far (most recent last):",
-        *trace_lines,
-        "Known facts:",
-        *_replan_facts(execution_trace, world_state, current_location),
-    ]
-    if failed_step is not None:
-        revision_lines.append(f"Step that failed: {json.dumps(failed_step)}")
-    revision_lines += [
-        f"Steps that were not started: {not_started_text}",
         "Rules for the new plan:",
-        f"- Plan only the remaining work, starting from {current_location}.",
+        "- Plan only the remaining work, starting from where the robot is now.",
+        "- If rooms are still to search, search them in the listed order; "
+        "otherwise only report.",
         "- Do not repeat steps that already succeeded.",
         "- Do not search a room again where the object was already not found.",
         "- Do not navigate to a blocked or unreachable location; choose another "
         "location or report.",
-        "- The result of the last search is already known (see above), so do not "
+        "- The result of the last search is already known (see below), so do not "
         "start the plan with a conditional on last_search_result. Use one only "
         "right after a new search step in this plan.",
         "- If the goal can no longer be reached, return a plan with a report step "
         "that explains why.",
         f"Example remainder plan (illustrative only) when {REPLAN_EXAMPLE_SITUATION}:",
         json.dumps(REPLAN_EXAMPLE_PLAN),
+        "What happened so far (most recent last):",
+        *trace_lines,
     ]
+    if failed_step is not None:
+        revision_lines.append(f"Step that failed: {json.dumps(failed_step)}")
+    revision_lines += [
+        f"Steps that were not started: {not_started_text}",
+        "Known facts (use these, not the example):",
+        *_replan_facts(execution_trace, world_state, current_location, remaining_steps),
+    ]
+    if rejected_plan is not None:
+        revision_lines += [
+            "Your previous plan was rejected:",
+            _shorten(_as_text(rejected_plan), MAX_PREVIOUS_OUTPUT_LENGTH),
+            "Problems:",
+            *(f"- {_shorten(error, MAX_ERROR_LENGTH)}"
+              for error in (rejected_errors or [])[:MAX_ERRORS_SHOWN]),
+            "Write a corrected plan that follows the facts and rules above.",
+        ]
     return _fill_template(template, original_goal, world_state,
                           revision_context=_as_section(revision_lines))
 
@@ -322,11 +349,21 @@ def _describe_outcome(status: str, evidence) -> str:
     return f"{status} ({detail})" if detail else status
 
 
-def _replan_facts(execution_trace: list, world_state: dict, current_location: str) -> list:
-    """Facts the remainder plan must respect, worked out from the trace."""
+def _replan_facts(execution_trace: list, world_state: dict, current_location: str,
+                  remaining_steps: list = ()) -> list:
+    """Facts the remainder plan must respect, worked out from the trace,
+    the task's search results and the steps that were not done."""
     found_at = {}        # "red ball" -> rooms where it was found
     not_found_at = {}    # "red ball" -> rooms searched without finding it
     unreachable = list(world_state.get("blocked_routes") or [])
+
+    for result in world_state.get("search_results") or []:
+        room, target = result.get("location"), result.get("target")
+        if room and target:
+            rooms_by_target = found_at if result.get("result") == "FOUND" else not_found_at
+            rooms = rooms_by_target.setdefault(target, [])
+            if room not in rooms:
+                rooms.append(room)
 
     for entry in execution_trace:
         if not isinstance(entry, dict) or not isinstance(entry.get("step"), dict):
@@ -347,7 +384,13 @@ def _replan_facts(execution_trace: list, world_state: dict, current_location: st
             if target not in unreachable:
                 unreachable.append(target)
 
-    facts = [f"- The robot is at {current_location}."]
+    failed = _failed_step(execution_trace)
+    if isinstance(failed, dict) and failed.get("action") in {"navigate", "return_home"}:
+        # current_location is the last place reached, not where the robot is.
+        facts = [f"- The robot stopped on the way to {failed.get('location') or 'reception'}. "
+                 f"The last place it reached was {current_location}."]
+    else:
+        facts = [f"- The robot is at {current_location}."]
     for target, rooms in found_at.items():
         facts.append(f"- The {target} was found at: {', '.join(rooms)}.")
     for target, rooms in not_found_at.items():
@@ -356,7 +399,51 @@ def _replan_facts(execution_trace: list, world_state: dict, current_location: st
         facts.append(
             f"- Blocked or unreachable, do not navigate there: {', '.join(map(str, unreachable))}."
         )
+
+    # Rooms the plan still meant to search: the failed step and the steps not
+    # started, conditional branches included.
+    wanted = [target for target in found_at] + [target for target in not_found_at]
+    planned_rooms, searches = [], []
+    steps_left = list(remaining_steps or [])
+    if isinstance(failed, dict) and (not steps_left or steps_left[0] != failed):
+        steps_left.insert(0, failed)   # the main loop passes it first already
+    _collect_planned_searches(steps_left, planned_rooms, searches)
+    wanted += [_search_target(step) for step in searches]
+    still_to_search = []
+    if wanted and not any(target in found_at for target in wanted):
+        target = wanted[-1]
+        done = set(not_found_at.get(target, [])) | set(unreachable)
+        still_to_search = [room for room in dict.fromkeys(planned_rooms) if room not in done]
+        facts.append("- Rooms from the plan still to search that can be reached: "
+                     f"{', '.join(still_to_search) if still_to_search else 'none'}.")
+
+    # A trip whose destination cannot be reached: without this line the model
+    # drove somewhere else instead of telling the user.
+    if isinstance(failed, dict) and failed.get("action") == "navigate":
+        destination = failed.get("location")
+        if destination in unreachable and not still_to_search:
+            facts.append(f"- {destination} cannot be reached now, so the plan should "
+                         f"be one report step telling the user that.")
     return facts
+
+
+def _collect_planned_searches(steps, rooms: list, searches: list):
+    """Rooms the steps search (a navigate followed by a search), in order,
+    and the search steps themselves."""
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        action = step.get("action")
+        following = steps[index + 1] if index + 1 < len(steps) else None
+        if (action == "navigate" and isinstance(step.get("location"), str)
+                and isinstance(following, dict) and following.get("action") == "search"):
+            rooms.append(step["location"])
+        elif action == "search":
+            searches.append(step)
+        elif action == "conditional":
+            for branch in ("then", "else"):
+                if isinstance(step.get(branch), list):
+                    _collect_planned_searches(step[branch], rooms, searches)
 
 
 def _failed_step(execution_trace: list):

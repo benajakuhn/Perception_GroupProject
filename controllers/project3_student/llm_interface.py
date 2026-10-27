@@ -92,15 +92,18 @@ class LLMInterface:
         return self._ask_model(prompt, request_kind="correction")
 
     def replan(self, original_goal: str, world_state: dict,
-               execution_trace: list, remaining_steps: list = None) -> Dict[str, Any]:
+               execution_trace: list, remaining_steps: list = None,
+               rejected_plan=None, rejected_errors: list = None) -> Dict[str, Any]:
         """Plan for the remaining work after a step failed during execution.
 
         Only the most recent trace entries go into the prompt. The revised
         plan is untrusted and must pass PlanValidator like the first plan.
+        rejected_plan/rejected_errors ask for a corrected revision.
         """
         prompt = build_replan_prompt(
             self.template, original_goal, world_state,
             execution_trace, remaining_steps or [],
+            rejected_plan=rejected_plan, rejected_errors=rejected_errors,
         )
         return self._ask_model(prompt, request_kind="replan")
 

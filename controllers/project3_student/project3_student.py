@@ -143,17 +143,33 @@ def plan_goal_off_thread(user_goal: str) -> dict:
 
 def replan_goal_off_thread(original_goal: str, state_snapshot: dict,
                            failure_trace: list, remaining_steps: list) -> dict:
-    """Asynchronous replanning after physical step failure."""
+    """Asynchronous replanning after physical step failure.
+
+    A revision must pass the validator and its revision check (no blocked
+    location, no room searched again). If it does not, the model gets one
+    corrected attempt with the reasons.
+    """
+    def check(plan):
+        valid, errors = validator.validate(plan)
+        if valid:
+            valid, errors = validator.check_revision(plan, state_snapshot)
+        return valid, errors
+
     try:
         plan = llm.replan(original_goal, state_snapshot, failure_trace, remaining_steps)
+        valid, errors = check(plan)
+        if not valid:
+            print("[REPLAN REJECTED, ASKING FOR A CORRECTION]", errors)
+            plan = llm.replan(original_goal, state_snapshot, failure_trace, remaining_steps,
+                              rejected_plan=plan, rejected_errors=errors)
+            valid, errors = check(plan)
     except Exception as error:
-        return {"kind": "error", "error": str(error)}
+        return {"kind": "error", "error": str(error), "replan": True}
 
-    valid, errors = validator.validate(plan)
     if valid:
         return {"kind": "plan", "plan": plan}
     else:
-        return {"kind": "rejected", "plan": plan, "errors": errors}
+        return {"kind": "rejected", "plan": plan, "errors": errors, "replan": True}
 
 
 def submit_goal(user_goal: str):
@@ -220,6 +236,15 @@ def handle_utterance(heard: dict):
     submit_goal(goal_text)
 
 
+def stopped_after_failed_replan(result: dict):
+    """After a failed replan: what the searches found, and that it stopped."""
+    if not result.get("replan"):
+        return None
+    summary = skills.search_summary()
+    ending = "I could not make a safe new plan, so I have stopped."
+    return f"{summary} {ending}" if summary else ending
+
+
 def consume_planning_result():
     """Transfer completed asynchronous planning output back to main thread."""
     global planning_future
@@ -240,10 +265,12 @@ def consume_planning_result():
         speech.speak(result.get("question") or "Could you clarify your request?")
     elif kind == "rejected":
         print("[PLAN REJECTED]", result.get("errors"))
-        speech.speak("I cannot safely execute that plan.")
+        speech.speak(stopped_after_failed_replan(result)
+                     or "I cannot safely execute that plan.")
     elif kind == "error":
         print("[PLANNING BACKEND ERROR]", result.get("error"))
-        speech.speak("Planning encountered an error.")
+        speech.speak(stopped_after_failed_replan(result)
+                     or "Planning encountered an error.")
     elif kind == "plan":
         print("[VALIDATED PLAN]", result["plan"])
         speech.speak("Plan approved. Starting execution.")

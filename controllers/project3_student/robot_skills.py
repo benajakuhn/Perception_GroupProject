@@ -61,7 +61,7 @@ class RobotSkills:
         elif action == "report":
             # The plan was written before any search ran, so its message cannot
             # know the outcome; after a search, report what the camera found.
-            message = self._search_summary() or step["message"]
+            message = self.search_summary() or step["message"]
             self.speech.speak(message)
             self.last_evidence = {"reported": message}
             return "SUCCEEDED"
@@ -186,7 +186,7 @@ class RobotSkills:
         parts = (self.active_step.get("colour"), self.active_step.get("object"))
         return " ".join(part for part in parts if part)
 
-    def _search_summary(self):
+    def search_summary(self):
         """Truthful sentence about this task's searches, or None if none ran."""
         results = self.world_state.search_results
         if not results:

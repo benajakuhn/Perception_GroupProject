@@ -409,10 +409,14 @@ class ReplanPromptTests(unittest.TestCase):
         trace, remaining_steps, world_state = self.search_then_blocked_case()
         prompt = build_replan_prompt(self.template, "find the red ball", world_state,
                                      trace, remaining_steps)
-        self.assertIn("- The robot is at laboratory.", prompt)
+        self.assertIn("- The robot stopped on the way to meeting_room. "
+                      "The last place it reached was laboratory.", prompt)
         self.assertIn("- Already searched without finding the red ball: laboratory.", prompt)
         self.assertIn("- Blocked or unreachable, do not navigate there: meeting_room.", prompt)
-        self.assertIn("- Plan only the remaining work, starting from laboratory.", prompt)
+        self.assertIn("- Plan only the remaining work, starting from where the robot is now.",
+                      prompt)
+        self.assertIn("- Rooms from the plan still to search that can be reached: none.",
+                      prompt)
 
     def test_failed_step_is_shown_apart_from_steps_not_started(self):
         trace, remaining_steps, world_state = self.search_then_blocked_case()
@@ -440,6 +444,87 @@ class ReplanPromptTests(unittest.TestCase):
         replan_prompt = build_replan_prompt(self.template, "x", self.world_state, [], [])
         self.assertNotIn(example_text, first_plan_prompt)
         self.assertIn(example_text, replan_prompt)
+
+
+class ReplanWebotsTrialTests(unittest.TestCase):
+    """The Webots trial where the replan searched the meeting room again.
+
+    Laboratory and meeting room were searched, then Office B was BLOCKED.
+    The bounded trace no longer held the laboratory search, the prompt said
+    the robot was at the meeting room, and Office A was only inside a
+    conditional, so the model copied the example and went back.
+    """
+
+    def build(self, **kwargs):
+        search = {"action": "search", "object": "ball", "colour": "red"}
+        not_found = {"result": "NOT_FOUND", "outcome": "NOT_FOUND", "found": False,
+                     "location": "meeting_room"}
+        trace = [
+            {"step": {"action": "navigate", "location": "meeting_room"},
+             "status": "SUCCEEDED", "evidence": {"reason": "arrived"}},
+            {"step": search, "status": "SUCCEEDED", "evidence": not_found},
+            {"step": {"action": "conditional"}, "status": "EXPANDED", "evidence": None},
+            {"step": {"action": "navigate", "location": "office_b"}, "status": "BLOCKED",
+             "evidence": {"reason": "front obstacle", "unreachable": ["office_b"]}},
+        ]
+        remaining = [
+            {"action": "navigate", "location": "office_b"}, search,
+            {"action": "conditional",
+             "condition": {"source": "last_search_result", "operator": "found", "value": False},
+             "then": [{"action": "navigate", "location": "office_a"}, search], "else": []},
+            {"action": "report", "message": "Tell the user where the red ball is."},
+        ]
+        state = WorldState()
+        state.current_location = "meeting_room"
+        state.blocked_routes = ["office_b"]
+        state.search_results = [
+            {"target": "red ball", "location": "laboratory", "result": "NOT_FOUND"},
+            {"target": "red ball", "location": "meeting_room", "result": "NOT_FOUND"},
+        ]
+        template = PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
+        return build_replan_prompt(template, "find the red ball", state.as_dict(),
+                                   trace, remaining, **kwargs)
+
+    def test_rooms_searched_earlier_than_the_trace_are_known(self):
+        self.assertIn("- Already searched without finding the red ball: "
+                      "laboratory, meeting_room.", self.build())
+
+    def test_says_where_the_robot_stopped(self):
+        prompt = self.build()
+        self.assertIn("- The robot stopped on the way to office_b. "
+                      "The last place it reached was meeting_room.", prompt)
+        self.assertNotIn("The robot is at meeting_room", prompt)
+
+    def test_lists_rooms_still_to_search(self):
+        prompt = self.build()
+        show("replan prompt, Webots trial (end)", prompt_excerpt="\n" + end_of_prompt(prompt))
+        self.assertIn("- Rooms from the plan still to search that can be reached: office_a.",
+                      prompt)
+
+    def test_facts_come_after_the_example(self):
+        # The model copied the example's rooms when the example came last.
+        prompt = self.build()
+        self.assertLess(prompt.index(json.dumps(REPLAN_EXAMPLE_PLAN)),
+                        prompt.index("- Rooms from the plan still to search"))
+
+    def test_unreachable_destination_asks_for_a_report(self):
+        state = WorldState()
+        state.current_location = "main_corridor"
+        state.blocked_routes = ["office_b"]
+        trace = [{"step": {"action": "navigate", "location": "office_b"},
+                  "status": "BLOCKED", "evidence": {"reason": "front obstacle"}}]
+        prompt = build_replan_prompt(PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8"),
+                                     "go to Office B", state.as_dict(), trace,
+                                     [{"action": "navigate", "location": "office_b"}])
+        self.assertIn("- office_b cannot be reached now, so the plan should be one "
+                      "report step telling the user that.", prompt)
+        self.assertNotIn("- Rooms from the plan still to search", prompt)
+
+    def test_rejected_revision_and_problems_are_shown(self):
+        prompt = self.build(rejected_plan={"steps": []},
+                            rejected_errors=["steps[1]: already searched at meeting_room"])
+        self.assertIn("Your previous plan was rejected:", prompt)
+        self.assertIn("- steps[1]: already searched at meeting_room", prompt)
 
 
 class ReplanFromExecutiveTraceTests(unittest.TestCase):
