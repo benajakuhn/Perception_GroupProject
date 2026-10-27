@@ -31,6 +31,7 @@ class WorldState:
             "replan_count": self.replan_count,
             "execution_status": self.execution_status,
             "pending_question": self.pending_question,
+            "search_results": [dict(result) for result in self.search_results],
         }
 
     def get_failure_trace(self, trace: list, max_entries: int = 5) -> list:

@@ -66,6 +66,43 @@ class PlanValidator:
 
         return len(errors) == 0, errors
 
+    def check_revision(self, plan: dict, world_state: dict):
+        """Extra checks for a replanned remainder: (bool, errors).
+
+        Run after validate(). A revision must not drive to a location found
+        blocked or unreachable during this task, and must not search for the
+        same target again in a room already searched (FOUND, NOT_FOUND or
+        UNCERTAIN). The robot may have stopped between rooms, so a search
+        before any navigate step is not checked.
+        """
+        blocked = set(world_state.get("blocked_routes") or [])
+        searched = {}
+        for result in world_state.get("search_results") or []:
+            searched.setdefault(result.get("target"), set()).add(result.get("location"))
+        errors = []
+        self._check_revision_steps(plan.get("steps") or [], None, blocked, searched,
+                                   errors, "steps")
+        return len(errors) == 0, errors
+
+    def _check_revision_steps(self, steps, location, blocked, searched, errors, path):
+        for i, step in enumerate(steps):
+            here = f"{path}[{i}]"
+            action = step.get("action")
+            if action == "conditional":
+                for branch in ("then", "else"):
+                    self._check_revision_steps(step.get(branch) or [], location, blocked,
+                                               searched, errors, f"{here}.{branch}")
+            elif action in {"navigate", "return_home"}:
+                location = step.get("location") or "reception"
+                if location in blocked:
+                    errors.append(f"{here}: {location} is blocked or unreachable; "
+                                  "do not navigate there.")
+            elif action == "search" and location is not None:
+                target = " ".join(v for v in (step.get("colour"), step.get("object")) if v)
+                if location in searched.get(target, set()):
+                    errors.append(f"{here}: the {target} was already searched for at "
+                                  f"{location}; search a room not searched yet.")
+
     def _validate_steps(self, steps, errors, path, depth, counter, context):
         if depth > MAX_NESTING_DEPTH:
             errors.append(f"{path}: nesting depth exceeds {MAX_NESTING_DEPTH}.")
