@@ -23,14 +23,19 @@ class Detection:
     image_x: Optional[float] = None
 
 class ObjectPerception:
-    # Thresholds measured on 320x240 frames (tests/test_perception.py): the
-    # ball scores circularity ~0.90 and fill ~0.97; the red box 0.75-0.79 and
-    # 0.62-0.67, whether seen face-on or at an angle.
+    # Thresholds from real Webots search frames (logs/frames, meeting room):
+    # the rendered ball has R~196 G~58 B~59 (red 3.3x green), circularity
+    # 0.79-0.84 and fill 0.81-0.89. The red box (synthetic frames in
+    # tests/test_perception.py) has circularity 0.75-0.79 but fill only
+    # 0.62-0.67, so fill is what rejects it; circularity is a loose check.
     MIN_AREA = 500.0           # ball still detected ~2.5 m away
     REF_AREA = 5000.0
-    MIN_CIRCULARITY = 0.82
-    MIN_FILL = 0.80            # contour area / area of its enclosing circle
-    RED_RATIO = 3.0            # red channel vs green and blue (floor pad: 2.25)
+    MIN_CIRCULARITY = 0.70
+    MIN_FILL = 0.75            # contour area / area of its enclosing circle
+    FULL_FILL = 0.85           # fill at which the shape counts as fully round
+    # Red channel vs green and blue. The meeting room's floor pad, which the
+    # robot stands on while searching, is 2.25x; the rendered ball is 3.3x.
+    RED_RATIO = 2.7
     MAX_SEARCH_FRAMES = 200
     FOUND_CONFIDENCE = 0.70
 
@@ -78,10 +83,11 @@ class ObjectPerception:
 
         # create mask for red objects (0 for non red, 255 for red)
         # red objects have red value that is greater than 60 and at least RED_RATIO
-        # times the green and blue values. Measured in Webots frames: the red ball
-        # and red box are ~10x, but the meeting room's floor pad, which the robot
+        # times the green and blue values. Measured in Webots frames: the meeting
+        # room's floor pad, which the robot
         # stands on while searching, is only 2.25x; with a 2x rule the pad filled
-        # half the image and swallowed a ball touching it.
+        # half the image and swallowed a ball touching it. (Measured: the
+        # rendered ball is 3.3x, not the ~19x of its base colour.)
         mask = ((r > 60) & (r > self.RED_RATIO * g) & (r > self.RED_RATIO * b)).astype(np.uint8) * 255
 
         # find contours in the mask
@@ -127,8 +133,9 @@ class ObjectPerception:
             area_score = min(1.0, area / self.REF_AREA)
 
             # combine shape and size into a confidence score; shape counts most,
-            # so a far but clearly round ball is still trusted
-            shape_score = min(1.0, circularity, fill)
+            # so a far but clearly round ball is still trusted, while a ball cut
+            # off at the image edge (lower fill) stays UNCERTAIN
+            shape_score = min(1.0, fill / self.FULL_FILL)
             confidence = min(1.0, 0.7 * shape_score + 0.3 * area_score)
 
             # store the detection with the estimated confidence and x position

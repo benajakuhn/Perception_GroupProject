@@ -126,5 +126,32 @@ class DetectionTests(unittest.TestCase):
         self.assertAlmostEqual(detect(image)[0].image_x, 0.5, delta=0.05)
 
 
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "frames"
+
+
+def real_frame(name):
+    bgr = cv2.imread(str(FIXTURES / name))
+    return np.dstack([bgr, np.full(bgr.shape[:2], 255, np.uint8)])
+
+
+class RealWebotsFrameTests(unittest.TestCase):
+    """Frames saved from the robot camera in Webots (PERCEPTION_SAVE_FRAMES)."""
+
+    def test_ball_on_top_of_red_meeting_room_pad_is_found(self):
+        # The case that failed in a trial: with a 2x red rule the ball merged
+        # with the pad; with 3x it was cut down to UNCERTAIN (0.68).
+        detections = detect(real_frame("meeting_room_ball.png"))
+        self.assertEqual(len(detections), 1)
+        self.assertGreaterEqual(detections[0].confidence,
+                                ObjectPerception.FOUND_CONFIDENCE)
+        self.assertLess(detections[0].image_x, 0)       # ball is left of centre
+
+    def test_floor_pads_without_ball_give_nothing(self):
+        for name in ("meeting_room_pad_no_ball.png", "laboratory_pad_no_ball.png",
+                     "office_b_pad_no_ball.png"):
+            self.assertEqual(detect(real_frame(name)), [], name)
+
+
 if __name__ == "__main__":
     unittest.main()
