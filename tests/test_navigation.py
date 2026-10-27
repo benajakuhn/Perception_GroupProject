@@ -21,6 +21,8 @@ WHEEL_RADIUS = 0.0205
 AXLE_LENGTH = 0.052
 # The obstacle supplied in the world, standing on the centre -> centre_north edge.
 CENTRE_OBSTACLE = (0.0, 0.9, 1.15, 0.3)
+# The same kind of obstacle moved into Office A's doorway.
+DOORWAY_OBSTACLE = (-2.6, 1.05, 0.3, 0.3)
 
 
 class FakeMotor:
@@ -114,20 +116,24 @@ class NavigatorTests(unittest.TestCase):
         robot, navigator = make(-3.5, 2.0)
         self.assertEqual(drive(robot, navigator, "meeting_room"), SUCCEEDED)
 
-    def test_centre_obstacle_blocks_the_north_side(self):
-        # The supplied obstacle stands on the only centre -> centre_north edge,
-        # so Office A cannot be reached: BLOCKED, for the planner to replan.
+    def test_drives_around_the_centre_obstacle(self):
+        # The supplied obstacle blocks the middle of the hall; the robot sees
+        # it, backs up to the centre and takes a side lane instead.
         robot, navigator = make(-0.8, -2.8, obstacles=[CENTRE_OBSTACLE])
+        self.assertEqual(drive(robot, navigator, "office_a"), SUCCEEDED)
+        self.assertLess(math.dist((robot.x, robot.y), (-3.5, 2.0)), 0.2)
+        self.assertIn(frozenset(("centre", "centre_north")), navigator.blocked_edges)
+        self.assertEqual(navigator.reroutes, 1)
+
+    def test_blocked_doorway_lists_unreachable_rooms(self):
+        # Something in Office A's doorway: there is no other way in.
+        robot, navigator = make(-0.8, -2.8, obstacles=[DOORWAY_OBSTACLE])
         self.assertEqual(drive(robot, navigator, "office_a"), BLOCKED)
-        self.assertEqual(navigator.last_evidence["reason"], "front obstacle")
-        self.assertIn("centre - centre_north", navigator.last_evidence["blocked_paths"])
-        self.assertEqual(navigator.last_evidence["unreachable"],
-                         ["main_corridor", "office_a", "office_b"])
-        self.assertLess(robot.y, 0.9)            # stopped before the obstacle
+        self.assertEqual(navigator.last_evidence["unreachable"], ["office_a"])
         self.assertEqual((robot.left.velocity, robot.right.velocity), (0.0, 0.0))
 
     def test_new_task_tries_again_after_obstacle_is_moved(self):
-        robot, navigator = make(-0.8, -2.8, obstacles=[CENTRE_OBSTACLE])
+        robot, navigator = make(-0.8, -2.8, obstacles=[DOORWAY_OBSTACLE])
         self.assertEqual(drive(robot, navigator, "office_a"), BLOCKED)
         robot.obstacles.clear()                  # someone moves the obstacle
         self.assertEqual(drive(robot, navigator, "office_a"), SUCCEEDED)
@@ -147,14 +153,11 @@ class NavigatorTests(unittest.TestCase):
         self.assertLess(math.dist((robot.x, robot.y), (2.0, 0.0)), 0.2)
 
     def test_blocked_when_no_route_is_left(self):
-        # Something in the doorway of Office A: there is no other way in.
-        robot, navigator = make(-0.8, -2.8, obstacles=[(-2.6, 1.05, 0.3, 0.3)])
+        robot, navigator = make(-0.8, -2.8, obstacles=[DOORWAY_OBSTACLE])
         self.assertEqual(drive(robot, navigator, "office_a"), BLOCKED)
         self.assertEqual(navigator.last_evidence["reason"], "front obstacle")
         self.assertIn("office_a_approach - office_a_entry",
                       navigator.last_evidence["blocked_paths"])
-        self.assertEqual(robot.left.velocity, 0.0)
-        self.assertEqual(robot.right.velocity, 0.0)
 
     def test_obstacle_next_to_target_counts_as_arrival(self):
         # A box on the approach line, about 0.2 m before the laboratory stop point.
