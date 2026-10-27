@@ -6,9 +6,9 @@ vosk==0.3.44
 sounddevice==0.5.5
 pyttsx3==2.99  # used on Windows/Linux; macOS uses the built-in `say` command
 #
-# Other roles: add your packages below with exact versions.
-# numpy==2.*
-# opencv-python==4.*
+# Perception (R4): camera image analysis
+numpy==2.5.2
+opencv-contrib-python==4.13.0.92  # provides cv2; opencv-python works too
 
 # Planning (R2): local language model; pre-built CPU wheels, so no C++
 # compiler is needed (as in Lab 5).

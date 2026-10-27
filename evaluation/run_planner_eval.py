@@ -12,8 +12,9 @@ Each goal goes through the same steps the controller will use:
 Replan cases start from a recorded failure instead of a fresh goal:
     replan(goal, state, failure trace, remaining steps) -> PlanValidator -> ...
 Their valid plans are also checked against the replan rules (no navigating to
-a blocked room, no searching a room again). The main loop does not correct
-rejected replans yet, so the '1st try' column is what the robot gets today.
+a blocked room, no searching a room again). In the controller the same rules
+are PlanValidator.check_revision, and a revision that breaks them gets one
+corrected attempt, so the '1st try' column is before that correction.
 
 The results are GENUINE model output, not test fixtures. Every model call is
 also logged by LLMInterface in logs/llm_<date>.jsonl, and a summary of each
