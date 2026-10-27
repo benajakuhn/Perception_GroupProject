@@ -58,10 +58,19 @@ LOCATION_NAMES = {
     "main_corridor": "the main corridor",
 }
 
+# Multi-word mishearings ("red ball" heard as "read all").
+PHRASE_SYNONYMS = {
+    "read all": "red ball",
+    "red all": "red ball",
+}
+
 # Single-word synonyms and mishearings ("red" is often recognised as "read").
 WORD_SYNONYMS = {
     "read": "red",
     "blew": "blue",
+    "bull": "ball",
+    "signed": "find",
+    "sign": "find",
     "books": "box",
     "bowl": "ball",
     "ceiling": "cylinder",
@@ -165,6 +174,8 @@ def normalise(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     for phrase in sorted(LOCATION_PHRASES, key=len, reverse=True):
         text = re.sub(rf"\b{re.escape(phrase)}\b", LOCATION_PHRASES[phrase], text)
+    for phrase, replacement in PHRASE_SYNONYMS.items():
+        text = re.sub(rf"\b{re.escape(phrase)}\b", replacement, text)
     return text
 
 
@@ -183,6 +194,7 @@ PLANNER_LOCATION_NAMES = {
 }
 _PLANNER_REPLACEMENTS = {
     **{phrase: PLANNER_LOCATION_NAMES[loc] for phrase, loc in LOCATION_PHRASES.items()},
+    **PHRASE_SYNONYMS,
     **WORD_SYNONYMS,
 }
 # One pass, longest phrase first, so "meeting room" is not turned into
