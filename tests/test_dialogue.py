@@ -116,6 +116,26 @@ class ClassifyTests(unittest.TestCase):
                      "ross them amanda spoken to either", "hello"):
             self.assertEqual(self.dialogue.classify(text), "unknown", text)
 
+    def test_background_talk_with_a_task_word_is_unknown(self):
+        # A lecture video playing during a trial: these contain "find",
+        # "look", "go", "move" or "blue" but are not commands.
+        for text in (
+            "the find that", "like go", "is he move", "where was i",
+            "but that's where", "during my with go out and",
+            "before looking at the work will take a quick look at the cost identity",
+            "that the one stands for one server first come first served",
+            "doesn't pay that but in this before yeah if you only pay while "
+            "waiting in queue for oil producers to el que iba blew them that "
+            "he plans to cuba is is not as little spoiler",
+        ):
+            self.assertEqual(self.dialogue.classify(text), "unknown", text)
+
+    def test_short_commands_still_accepted(self):
+        for text in ("go to have a spare", "please go to the laboratory",
+                     "can you find the red ball in office a", "meeting",
+                     "go back home", "find the ball"):
+            self.assertEqual(self.dialogue.classify(text), "goal", text)
+
     def test_noise_is_ignored(self):
         for text in ("", "   ", "the", "uh", "huh?"):
             self.assertEqual(self.dialogue.classify(text), "noise", repr(text))

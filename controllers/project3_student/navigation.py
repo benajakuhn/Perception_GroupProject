@@ -3,8 +3,11 @@
 The supplied coordinates are only high-level targets. Students must implement
 a safe feedback-based navigation method rather than teleporting the robot.
 
-Route: shortest path (Dijkstra) through navigation_graph.json from the graph
-node nearest to the robot. An obstacle detected by the front sensors is
+Route: shortest path (Dijkstra) through navigation_graph.json. It starts at
+the last graph node the robot passed, so after a failed detour it goes back
+the way it came instead of heading for the nearest node, which may be on the
+other side of a wall; the nearest node is used only when the robot is at a
+node or has not driven yet. An obstacle detected by the front sensors is
 handled in three layers, each bounded:
 
 1. Drive around it: stop, turn away from it and follow its edge with the
@@ -51,6 +54,7 @@ AVOID_LEAVE_LINE = 0.05       # m from the line to the waypoint counts as on it
 # Progress limit: time to drive the route at cruise speed, times a margin for
 # turning and steering, plus a fixed allowance.
 TIMEOUT_MARGIN = 2.0
+AT_NODE = 0.3                 # m: closer than this, the robot starts at that node
 TIMEOUT_EXTRA_SECONDS = 20.0
 
 
@@ -90,6 +94,8 @@ class Navigator:
         self.blocked_edges = set()
         # Why the last navigation ended; read by RobotSkills for the trace.
         self.last_evidence = None
+        # Last graph node the robot reached: a known free way back to the graph.
+        self.last_node = None
 
     def stop(self):
         self.left_motor.setVelocity(0.0)
@@ -107,10 +113,14 @@ class Navigator:
         self.blocked_edges = set()
         self.last_evidence = None
 
-        # find the nearest graph node to the robot's current position
+        # Start from the nearest graph node if the robot is at it, else from
+        # the last node it passed (straight lines to other nodes may cross walls)
         x, y, _ = self.gps.getValues()
         nodes = self.graph["nodes"]
         start_node = min(nodes, key=lambda n: math.hypot(nodes[n][0] - x, nodes[n][1] - y))
+        at_node = math.dist(nodes[start_node], (x, y)) <= AT_NODE
+        if not at_node and self.last_node in nodes:
+            start_node = self.last_node
 
         if not self._set_route(start_node):
             self._record_evidence("no route that avoids blocked paths", x, y)
@@ -148,6 +158,7 @@ class Navigator:
         # Check if current waypoint is reached
         if dist < ARRIVAL_TOLERANCE:
             self.avoiding = None
+            self.last_node = self.path[self.waypoint_index]
             self.waypoint_index += 1
             # if all waypoints completed, goal is reached, stop and return SUCCEEDED
             if self.waypoint_index >= len(self.waypoints):

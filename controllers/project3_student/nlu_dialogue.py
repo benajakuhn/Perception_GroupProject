@@ -100,6 +100,16 @@ NAVIGATION_WORDS = {
 }
 RETURN_WORDS = {"home", "back", "return"}
 
+# Background speech (a video, people talking nearby) is long and only now and
+# then contains a task word. A command is a short sentence, and one without a
+# place or object ("go to ...", heard badly) must start with its verb.
+MAX_GOAL_WORDS = 20
+COMMAND_VERBS = (SEARCH_WORDS | NAVIGATION_WORDS) - {"where"}
+LEADING_POLITE_WORDS = {
+    "please", "can", "could", "would", "will", "you", "robot", "now",
+    "ok", "okay", "hey", "and", "then", "so",
+}
+
 # Any of these cancels the active task. Stopping is always safe, so a false
 # positive ("stop at the lab") is preferred over missing a real stop request.
 STOP_PATTERN = re.compile(
@@ -279,6 +289,17 @@ class DialogueManager:
             or slots["unsupported_colours"] or slots["office_ambiguous"]
         )
 
+    def looks_like_command(self, slots: dict) -> bool:
+        """False for background speech that happens to contain a task word."""
+        tokens = slots["tokens"]
+        if len(tokens) > MAX_GOAL_WORDS:
+            return False
+        if (slots["locations"] or slots["objects"] or slots["colours"]
+                or slots["unsupported_colours"] or slots["office_ambiguous"]):
+            return True
+        leading = [t for t in tokens if t not in LEADING_POLITE_WORDS]
+        return bool(leading) and leading[0] in COMMAND_VERBS | RETURN_WORDS
+
     def classify(self, text: str, answer: str = None) -> str:
         """Route an utterance: 'noise', 'stop', 'status', 'answer',
         'unknown' or 'goal'.
@@ -306,7 +327,7 @@ class DialogueManager:
         if self.state.awaiting_clarification:
             if not (slots["search_intent"] or slots["navigation_intent"]):
                 return "answer"
-        if not self.is_relevant(slots):
+        if not self.is_relevant(slots) or not self.looks_like_command(slots):
             return "unknown"
         return "goal"
 
