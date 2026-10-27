@@ -177,7 +177,7 @@ class NavigatorTests(unittest.TestCase):
 
     def test_drives_around_the_centre_obstacle(self):
         # Layer 1: the robot follows the obstacle's edge and carries on,
-        # without needing another lane.
+        # without needing another route in the map.
         robot, navigator = make(-0.8, -2.8, obstacles=[CENTRE_OBSTACLE])
         self.assertEqual(drive(robot, navigator, "office_a"), SUCCEEDED)
         self.assertLess(math.dist((robot.x, robot.y), (-3.5, 2.0)), 0.2)
