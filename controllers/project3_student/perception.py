@@ -1,9 +1,12 @@
 """Camera-based object search.
 
-Set PERCEPTION_SAVE_FRAMES=1 to save every 10th search frame to logs/frames/
-for checking the thresholds against real camera images.
+Set PERCEPTION_SAVE_FRAMES=1 to save every 10th search frame, and every frame
+with a detection, to logs/frames/ for checking the thresholds against real
+camera images. File names start with the run's start time, so runs do not
+overwrite each other.
 """
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List
@@ -27,6 +30,7 @@ class ObjectPerception:
     REF_AREA = 5000.0
     MIN_CIRCULARITY = 0.82
     MIN_FILL = 0.80            # contour area / area of its enclosing circle
+    RED_RATIO = 3.0            # red channel vs green and blue (floor pad: 2.25)
     MAX_SEARCH_FRAMES = 200
     FOUND_CONFIDENCE = 0.70
 
@@ -73,8 +77,12 @@ class ObjectPerception:
         r = bgr[:, :, 2].astype(np.int16)
 
         # create mask for red objects (0 for non red, 255 for red)
-        # red objects have red value that is greater than 60 and at least twice as large as the green and blue values
-        mask = ((r > 60) & (r > 2 * g) & (r > 2 * b)).astype(np.uint8) * 255
+        # red objects have red value that is greater than 60 and at least RED_RATIO
+        # times the green and blue values. Measured in Webots frames: the red ball
+        # and red box are ~10x, but the meeting room's floor pad, which the robot
+        # stands on while searching, is only 2.25x; with a 2x rule the pad filled
+        # half the image and swallowed a ball touching it.
+        mask = ((r > 60) & (r > self.RED_RATIO * g) & (r > self.RED_RATIO * b)).astype(np.uint8) * 255
 
         # find contours in the mask
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -138,7 +146,7 @@ class ObjectPerception:
         return detections
 
 
-    def _save_frame(self):
+    def _save_frame(self, label: str = ""):
         """Debug aid: write the current camera image to logs/frames/."""
         image = self.camera.getImage()
         if image is None:
@@ -148,7 +156,10 @@ class ObjectPerception:
         bgra = np.frombuffer(image, dtype=np.uint8).reshape(
             (self.camera.getHeight(), self.camera.getWidth(), 4))
         self._saved_frames = getattr(self, "_saved_frames", 0) + 1
-        cv2.imwrite(str(folder / f"search_{self._saved_frames:04d}.png"), bgra[:, :, :3])
+        if not hasattr(self, "_run_id"):
+            self._run_id = time.strftime("%H%M%S")
+        name = f"{self._run_id}_{self._saved_frames:04d}{label}.png"
+        cv2.imwrite(str(folder / name), bgra[:, :, :3])
 
     def search_target(self, object_type: str, colour: str = None):
         """Return a detection/evidence object if the target is observed."""
@@ -184,9 +195,12 @@ class ObjectPerception:
 
         # Examine one frame & retain strongest detection so far
         self.frames_examined += 1
-        if os.environ.get("PERCEPTION_SAVE_FRAMES") and self.frames_examined % 10 == 0:
-            self._save_frame()
         detection = self.search_target(*self.target)
+        if os.environ.get("PERCEPTION_SAVE_FRAMES"):
+            if detection is not None:
+                self._save_frame(f"_conf{detection.confidence:.2f}")
+            elif self.frames_examined % 10 == 0:
+                self._save_frame()
 
         if detection is not None:
             if self.best_detection is None or detection.confidence > self.best_detection.confidence:

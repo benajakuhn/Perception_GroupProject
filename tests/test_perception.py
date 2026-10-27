@@ -100,6 +100,23 @@ class DetectionTests(unittest.TestCase):
     def test_green_ball_rejected(self):
         self.assertEqual(detect(ball(0.8, colour=GREEN, shaded=False)), [])
 
+    def test_ball_seen_while_standing_on_red_floor_pad(self):
+        # Meeting room: the robot stands on a light red pad (measured in a
+        # Webots frame as R=216 G=96 B=97) and the ball touches it in the image.
+        image = blank()
+        image[130:, :] = (97, 96, 216, 255)
+        r = int(round(FOCAL * 0.09 / 1.23))
+        cv2.circle(image, (160, 130 - r + 4), r, RED, -1, lineType=cv2.LINE_AA)
+        detections = detect(image)
+        self.assertEqual(len(detections), 1)
+        self.assertGreaterEqual(detections[0].confidence,
+                                ObjectPerception.FOUND_CONFIDENCE)
+
+    def test_red_floor_pad_alone_is_not_a_ball(self):
+        image = blank()
+        image[130:, :] = (97, 96, 216, 255)
+        self.assertEqual(detect(image), [])
+
     def test_empty_view(self):
         self.assertEqual(detect(blank()), [])
 
