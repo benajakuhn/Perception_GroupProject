@@ -17,15 +17,23 @@ from semantic_memory import SemanticMemory
 from speech_io import SpeechIO
 from task_executive import (
     BLOCKED,
+    CANCELLED,
     FAILED,
     SUCCEEDED,
     TIMEOUT,
     TaskExecutive,
 )
+from trial_log import TrialLog
 from world_state import WorldState
 
 TIME_STEP = 32
 MAX_REPLANS = 2
+# Spoken reason when the task ends without success after the last replan.
+STOP_REASONS = {
+    BLOCKED: "the way was blocked",
+    TIMEOUT: "a step took too long",
+    FAILED: "a step failed",
+}
 
 # Hardware initialisation
 robot = Robot()
@@ -49,6 +57,7 @@ memory = SemanticMemory()
 world_state = WorldState()
 skills = RobotSkills(navigator, perception, memory, speech, world_state)
 executive = TaskExecutive(skills, world_state)
+trials = TrialLog()   # one evaluation record per task
 
 # Worker thread for off-thread language operations
 worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="language")
@@ -69,6 +78,9 @@ def stop_everything():
     was_busy = is_busy()
     if executive.active:
         executive.cancel()
+        trials.steps(executive.trace)
+    if was_busy:
+        trials.finish(CANCELLED, robot.getTime(), world_state)
 
     if planning_future is not None:
         planning_future.cancel()
@@ -184,6 +196,7 @@ def submit_goal(user_goal: str):
     world_state.search_results = []   # reports cover this task only
     world_state.blocked_routes = []   # the obstacle is movable: try again
     print("[USER GOAL]", user_goal)
+    trials.start(user_goal, robot.getTime())
     planning_future = worker.submit(plan_goal_off_thread, user_goal)
 
 
@@ -267,13 +280,18 @@ def consume_planning_result():
         print("[PLAN REJECTED]", result.get("errors"))
         speech.speak(stopped_after_failed_replan(result)
                      or "I cannot safely execute that plan.")
+        trials.finish("PLAN_REJECTED", robot.getTime(), world_state,
+                      note="; ".join(map(str, result.get("errors") or []))[:500])
     elif kind == "error":
         print("[PLANNING BACKEND ERROR]", result.get("error"))
         speech.speak(stopped_after_failed_replan(result)
                      or "Planning encountered an error.")
+        trials.finish("PLANNING_ERROR", robot.getTime(), world_state,
+                      note=str(result.get("error"))[:500])
     elif kind == "plan":
         print("[VALIDATED PLAN]", result["plan"])
         speech.speak("Plan approved. Starting execution.")
+        trials.plan(result["plan"], "replan" if world_state.replan_count else "initial")
         executive.start(result["plan"])
     else:
         print("[UNEXPECTED PLANNING RESULT]", result)
@@ -291,12 +309,15 @@ while robot.step(TIME_STEP) != -1:
 
         if status == SUCCEEDED:
             print("[TASK SUCCEEDED]", executive.trace)
+            trials.steps(executive.trace)
+            trials.finish(SUCCEEDED, robot.getTime(), world_state)
             if not world_state.pending_question:
                 # After an ask step the robot waits for the reply instead.
                 speech.speak("Task complete.")
 
         elif status in {FAILED, TIMEOUT, BLOCKED}:
             print(f"[TASK {status}]", executive.trace)
+            trials.steps(executive.trace)
 
             # Replanning loop on step failure (bounded by MAX_REPLANS)
             if world_state.replan_count < MAX_REPLANS and planning_future is None:
@@ -306,6 +327,7 @@ while robot.step(TIME_STEP) != -1:
 
                 remaining = executive.steps[executive.step_index:]
                 failure_trace = world_state.get_failure_trace(executive.trace, max_entries=5)
+                trials.planning()
 
                 planning_future = worker.submit(
                     replan_goal_off_thread,
@@ -315,7 +337,10 @@ while robot.step(TIME_STEP) != -1:
                     remaining,
                 )
             else:
-                speech.speak(f"I could not complete the task safely due to {status.lower()}.")
+                summary = skills.search_summary()
+                ending = f"I have stopped because {STOP_REASONS.get(status, 'a step failed')}."
+                speech.speak(f"{summary} {ending}" if summary else ending)
+                trials.finish(status, robot.getTime(), world_state)
 
     # 3. Speech queue polling (non-blocking) and intent routing
     check_plan_question()
