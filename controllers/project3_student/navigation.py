@@ -3,27 +3,16 @@
 The supplied coordinates are only high-level targets. Students must implement
 a safe feedback-based navigation method rather than teleporting the robot.
 
-Route: shortest path (Dijkstra) through navigation_graph.json. It starts at
-the last graph node the robot passed, so after a failed detour it goes back
-the way it came instead of heading for the nearest node, which may be on the
-other side of a wall; the nearest node is used only when the robot is at a
-node or has not driven yet. An obstacle detected by the front sensors is
-handled in three layers, each bounded:
-
-1. Drive around it: stop, turn away from it and follow its edge with the
-   side sensors until the robot is back on the line to its waypoint and
-   closer to it than where it met the obstacle (a simple Bug2 strategy).
-2. If that fails (travel, time or distance-from-route limit), mark the
-   graph edge as blocked and take another route through the graph.
-3. If no route is left, end as BLOCKED so the planner can replan.
-
-The robot never reverses, so the front sensors always face the direction
-of travel.
+Obstacles seen by the front sensors are handled in three bounded steps:
+1. drive around the obstacle by following its edge with the side sensors,
+   until the robot is back on the line to its waypoint (a simple Bug2 method);
+2. if that fails, mark the graph edge as blocked and take another route;
+3. if no route is left, return BLOCKED so the planner can replan.
 """
-import heapq
 import json
-import math
 from pathlib import Path
+from collections import deque
+import math
 
 RUNNING = "RUNNING"
 SUCCEEDED = "SUCCEEDED"
@@ -31,17 +20,8 @@ FAILED = "FAILED"
 BLOCKED = "BLOCKED"
 TIMEOUT = "TIMEOUT"
 
-ARRIVAL_TOLERANCE = 0.15      # m from a waypoint counts as reached
-TURN_IN_PLACE_ERROR = 0.4     # rad; above this the robot turns on the spot
-CRUISE_SPEED = 4.5            # rad/s wheel speed when driving straight
-WHEEL_RADIUS = 0.0205         # m (E-puck)
-FRONT_THRESHOLD = 100.0       # ps0/ps1/ps6/ps7 value that means "obstacle ahead"
-# An obstacle this close to the final target is taken as arrival: objects
-# can stand right next to a room's stop point.
-NEAR_TARGET_OBSTACLE = 0.4    # m
-MAX_REROUTES = 3
-# Driving around an obstacle (layer 1). Sensor values follow the E-puck
-# lookup table: ~67 = nothing within 7 cm, 100 = ~6 cm, 300 = ~2.5 cm.
+# Driving around an obstacle. Sensor values follow the E-puck lookup table:
+# ~67 = nothing within 7 cm, 100 = ~6 cm, 300 = ~2.5 cm.
 AVOID_SPEED = 2.5             # rad/s, slower while close to an obstacle
 AVOID_TURN_SPEED = 2.0        # rad/s, turning away on the spot
 AVOID_CLEAR = 80.0            # front below this: done turning away
@@ -51,11 +31,10 @@ AVOID_MAX_TRAVEL = 3.0        # m driven while going around one obstacle
 AVOID_MAX_DEVIATION = 0.9     # m from the route edge (keeps it in the hall)
 AVOID_MAX_SECONDS = 90.0
 AVOID_LEAVE_LINE = 0.05       # m from the line to the waypoint counts as on it
-# Progress limit: time to drive the route at cruise speed, times a margin for
-# turning and steering, plus a fixed allowance.
-TIMEOUT_MARGIN = 2.0
-AT_NODE = 0.3                 # m: closer than this, the robot starts at that node
-TIMEOUT_EXTRA_SECONDS = 20.0
+MAX_REROUTES = 3
+# Progress limit: time to drive the route at 4.5 rad/s (wheel radius
+# 0.0205 m), twice that for turning and steering, plus 20 s.
+WHEEL_RADIUS = 0.0205
 
 
 class Navigator:
@@ -80,22 +59,22 @@ class Navigator:
             sensor.enable(timestep)
             self.proximity.append(sensor)
         self.active_location = None
-        self.path = []            # graph node names of the current route
+        self.path = []            # graph node names of the route
         self.waypoints = []       # their coordinates
         self.waypoint_index = 0
         self.steps = 0
         self.max_steps = 0
-        self.reroutes = 0
-        self.avoiding = None      # state while driving around an obstacle
-        self.avoided = 0          # obstacles driven around in this navigation
-        # Edges found blocked during the current navigation. Cleared on every
-        # start(): the obstacle is movable, so a new task tries again and the
-        # sensors decide.
-        self.blocked_edges = set()
         # Why the last navigation ended; read by RobotSkills for the trace.
         self.last_evidence = None
-        # Last graph node the robot reached: a known free way back to the graph.
+        # Last graph node the robot reached: a known free way back to the graph
         self.last_node = None
+
+        # obstacle state variables
+        self.avoiding = None          # state while driving around an obstacle
+        self.avoided = 0              # obstacles driven around in this navigation
+        self.avoid_failed = set()     # edges where driving around failed
+        self.blocked_edges = set()    # edges found blocked in this navigation
+        self.reroutes = 0
 
     def stop(self):
         self.left_motor.setVelocity(0.0)
@@ -104,25 +83,32 @@ class Navigator:
     def start(self, location: str) -> str:
         """Start a named-location task without advancing the simulation.
 
-        Graph nodes are accepted too, for the search viewpoints in a room."""
+        Graph nodes are accepted too, for the search viewpoints in a room.
+        """
         if location not in self.locations and location not in self.graph["nodes"]:
             return FAILED
 
         self.active_location = location
-        self.reroutes = 0
-        self.avoiding = None
-        self.avoided = 0
-        self.blocked_edges = set()
         self.last_evidence = None
+        self.avoided = 0
+        self.reroutes = 0
+        # The obstacle is movable, so every new task tries all edges again
+        self.blocked_edges = set()
 
-        # Start from the nearest graph node if the robot is at it, else from
-        # the last node it passed (straight lines to other nodes may cross walls)
-        x, y, _ = self.gps.getValues()
+        # get nodes from the graph
         nodes = self.graph["nodes"]
-        start_node = min(nodes, key=lambda n: math.hypot(nodes[n][0] - x, nodes[n][1] - y))
-        at_node = math.dist(nodes[start_node], (x, y)) <= AT_NODE
-        if not at_node and self.last_node in nodes:
-            start_node = self.last_node
+        # get current robot position
+        x, y, _ = self.gps.getValues()
+
+        # find the nearest graph node to the robot's current position
+        start_node = min(
+            nodes, key=lambda n: math.hypot(nodes[n][0] - x, nodes[n][1] - y)
+        )
+        # Unless the robot is at that node, start from the last node it passed:
+        # after a failed detour the nearest node can be behind a wall
+        if math.hypot(nodes[start_node][0] - x, nodes[start_node][1] - y) > 0.3:
+            if self.last_node in nodes:
+                start_node = self.last_node
 
         if not self._set_route(start_node):
             self._record_evidence("no route that avoids blocked paths", x, y)
@@ -130,6 +116,7 @@ class Navigator:
             return BLOCKED
         # Initial motor stop
         self.stop()
+        # Navigation status
         return RUNNING
 
     def update(self) -> str:
@@ -145,22 +132,23 @@ class Navigator:
         # get current position
         x, y, _ = self.gps.getValues()
 
-        # check the progress limit for this route
+        # check for timeout (the limit depends on the route length)
         self.steps += 1
         if self.steps > self.max_steps:
             self.stop()
             self._record_evidence(f"no arrival within {self.max_steps} steps", x, y)
             self.active_location = None
             return TIMEOUT
-
-        # get current target x,y position and distance to it
+        # get current target x,y position
         tx, ty = self.waypoints[self.waypoint_index]
+        # store distance from target
         dist = math.hypot(tx - x, ty - y)
 
-        # Check if current waypoint is reached
-        if dist < ARRIVAL_TOLERANCE:
+        # Check if current waypoint is reached (0.15m arrival tolerance)
+        if dist < 0.15:
             self.avoiding = None
             self.last_node = self.path[self.waypoint_index]
+            # Move to next waypoint
             self.waypoint_index += 1
             # if all waypoints completed, goal is reached, stop and return SUCCEEDED
             if self.waypoint_index >= len(self.waypoints):
@@ -168,10 +156,12 @@ class Navigator:
                 self._record_evidence("arrived", x, y)
                 self.active_location = None
                 return SUCCEEDED
+            # update target x,y for next waypoint
             tx, ty = self.waypoints[self.waypoint_index]
+            # update distance to next waypoint
             dist = math.hypot(tx - x, ty - y)
 
-        # Going around an obstacle: the side sensors steer, not the waypoint
+        # While driving around an obstacle the side sensors steer, not the waypoint
         if self.avoiding is not None:
             return self._avoid_obstacle(x, y, tx, ty)
 
@@ -182,72 +172,133 @@ class Navigator:
         error = math.atan2(math.sin(target_angle - heading), math.cos(target_angle - heading))
 
         # Turn in place if angle error is large (no forward motion, so the
-        # front sensors only matter once the robot drives again)
-        if abs(error) > TURN_IN_PLACE_ERROR:
+        # front sensors are only checked once the robot drives)
+        if abs(error) > 0.4:
             turn = max(-3.0, min(3.0, 2.5 * error))
             self.left_motor.setVelocity(-turn)
             self.right_motor.setVelocity(turn)
             return RUNNING
 
-        # Obstacle ahead: stop before any recovery
-        if self._front_is_blocked():
+        # Obstacle handling
+        if self._front_is_blocked(threshold=100.0):
+            # stop before any recovery
             self.stop()
-            return self._handle_obstacle(x, y, dist)
+            # If the robot is blocked by the target, stop and return SUCCEEDED
+            if self.waypoint_index == len(self.waypoints) - 1 and dist < 0.4:
+                self._record_evidence("stopped at an obstacle close to the target", x, y)
+                self.active_location = None
+                return SUCCEEDED
+            # Drive around the obstacle, else find another route, else BLOCKED
+            if self._start_avoidance(x, y):
+                return RUNNING
+            return self._reroute_or_block(x, y)
 
         # if error is small drive forward with steering
         turn = 2.0 * error
-        left_speed = max(-6.28, min(6.28, CRUISE_SPEED - turn))
-        right_speed = max(-6.28, min(6.28, CRUISE_SPEED + turn))
+        left_speed = max(-6.28, min(6.28, 4.5 - turn))
+        right_speed = max(-6.28, min(6.28, 4.5 + turn))
+
         self.left_motor.setVelocity(left_speed)
         self.right_motor.setVelocity(right_speed)
         return RUNNING
 
-    def _handle_obstacle(self, x: float, y: float, dist: float) -> str:
-        """Treat an obstacle as arrival, drive around it, or reroute."""
-        # An object standing next to the target's stop point
-        if self.waypoint_index == len(self.waypoints) - 1 and dist < NEAR_TARGET_OBSTACLE:
-            self._record_evidence("stopped at an obstacle close to the target", x, y)
-            self.active_location = None
-            return SUCCEEDED
+    def _set_route(self, start_node: str) -> bool:
+        """Route from start_node to the active location; False if there is none."""
+        path = self._find_path(start_node, self.active_location)
+        if path is None:
+            return False
+        nodes = self.graph["nodes"]
+        x, y, _ = self.gps.getValues()
+        self.route_start = (x, y)
+        self.path = path
+        # Node path -> waypoint coordinates
+        self.waypoints = [nodes[n] for n in path]
+        self.waypoint_index = 0
+        self.steps = 0
+        self.max_steps = self._step_limit(path)
+        self.avoiding = None
+        self.avoid_failed = set()
+        return True
 
-        if self._start_avoidance(x, y):
-            return RUNNING
-        return self._reroute_or_block(x, y)
+    def _find_path(self, start: str, goal: str):
+        """BFS through the graph, skipping edges found blocked; None if no path."""
+        # BFS queue
+        queue = deque([[start]])
+        # Set of visited nodes
+        visited = {start}
 
-    def _edge_from(self, x: float, y: float):
-        """Start of the edge being driven: previous waypoint or route start."""
+        # BFS
+        while queue:
+            # get the current path and node
+            curr_path = queue.popleft()
+            curr = curr_path[-1]
+
+            # check if goal is reached
+            if curr == goal:
+                return curr_path
+
+            # Unvisited neighbouring nodes over edges that are not blocked
+            for u, v in self.graph["edges"]:
+                if frozenset((u, v)) in self.blocked_edges:
+                    continue
+                nxt = v if u == curr else (u if v == curr else None)
+                if nxt and nxt not in visited:
+                    visited.add(nxt)
+                    queue.append(curr_path + [nxt])
+        return None
+
+    def _step_limit(self, path) -> int:
+        """Progress limit in controller steps for driving this route."""
+        x, y, _ = self.gps.getValues()
+        points = [(x, y)] + [tuple(self.graph["nodes"][n]) for n in path]
+        length = sum(math.dist(a, b) for a, b in zip(points, points[1:]))
+        seconds = length / (4.5 * WHEEL_RADIUS) * 2.0 + 20.0
+        return int(seconds * 1000 / self.timestep)
+
+    # ------------------------------------------------------------------
+    # Obstacles
+    # ------------------------------------------------------------------
+
+    def _current_edge(self):
+        """The graph edge being driven (the route start counts as a node)."""
         if self.waypoint_index > 0:
-            return tuple(self.waypoints[self.waypoint_index - 1])
-        return self.route_start
+            return frozenset((self.path[self.waypoint_index - 1],
+                              self.path[self.waypoint_index]))
+        return frozenset(("start", self.path[0]))
 
     def _start_avoidance(self, x: float, y: float) -> bool:
-        """Layer 1: begin driving around the obstacle, once per edge."""
+        """Step 1: begin driving around the obstacle, at most once per edge."""
         edge = self._current_edge()
         if edge in self.avoid_failed:
             return False
         p = [sensor.getValue() for sensor in self.proximity]
         # Keep the obstacle on the side where it is: obstacle mostly on the
-        # right -> turn left and follow it with the right-hand sensors.
+        # right -> turn left and follow it with the right-hand sensors
         side = 1 if max(p[0], p[1], p[2]) >= max(p[5], p[6], p[7]) else -1
         target = tuple(self.waypoints[self.waypoint_index])
+        if self.waypoint_index > 0:
+            edge_start = tuple(self.waypoints[self.waypoint_index - 1])
+        else:
+            edge_start = self.route_start
         self.avoiding = {
             "edge": edge,
             "side": side,
             "phase": "turn",
             "hit": (x, y),
             "hit_dist": math.dist((x, y), target),
-            "from": self._edge_from(x, y),
+            "from": edge_start,
             "last": (x, y),
             "travelled": 0.0,
             "steps": 0,
         }
+        # Give the detour its own time on top of the route's limit
         self.max_steps += int(AVOID_MAX_SECONDS * 1000 / self.timestep)
         print(f"[NAV] obstacle ahead; driving around it "
               f"(keeping it on the {'right' if side == 1 else 'left'})")
         return True
 
     def _avoid_obstacle(self, x: float, y: float, tx: float, ty: float) -> str:
-        """One update of driving around an obstacle (layer 1)."""
+        """One update of driving around an obstacle."""
         a = self.avoiding
         a["steps"] += 1
         a["travelled"] += math.dist(a["last"], (x, y))
@@ -256,7 +307,7 @@ class Navigator:
         p = [sensor.getValue() for sensor in self.proximity]
         front = max(p[0], p[7])
 
-        # Give up on this obstacle: let the graph find another way
+        # Give up on this obstacle: too far, too long or too far off the route
         if (a["travelled"] > AVOID_MAX_TRAVEL
                 or a["steps"] > AVOID_MAX_SECONDS * 1000 / self.timestep
                 or _distance_to_segment((x, y), a["from"], (tx, ty)) > AVOID_MAX_DEVIATION):
@@ -271,14 +322,14 @@ class Navigator:
         if (a["travelled"] > 0.15
                 and _distance_to_line((x, y), a["hit"], (tx, ty)) < AVOID_LEAVE_LINE
                 and math.dist((x, y), (tx, ty)) < a["hit_dist"] - 0.1
-                and front < FRONT_THRESHOLD):
+                and front < 100.0):
             self.avoiding = None
             self.avoided += 1
             print("[NAV] past the obstacle; back on the route")
             return RUNNING
 
         # Turn away on the spot until the front is clear
-        if a["phase"] == "turn" or front > FRONT_THRESHOLD:
+        if a["phase"] == "turn" or front > 100.0:
             if front > AVOID_CLEAR:
                 a["phase"] = "turn"
                 self.left_motor.setVelocity(-AVOID_TURN_SPEED * side)
@@ -298,14 +349,8 @@ class Navigator:
         self.right_motor.setVelocity(right)
         return RUNNING
 
-    def _current_edge(self):
-        if self.waypoint_index > 0:
-            return frozenset((self.path[self.waypoint_index - 1],
-                              self.path[self.waypoint_index]))
-        return frozenset(("start", self.path[0]))
-
     def _reroute_or_block(self, x: float, y: float) -> str:
-        """Layers 2 and 3: another route through the graph, else BLOCKED."""
+        """Steps 2 and 3: another route through the graph, else BLOCKED."""
         # Mark the edge being driven as blocked and look for another way from
         # the node the robot came from
         if self.waypoint_index > 0:
@@ -320,64 +365,14 @@ class Navigator:
 
         self._record_evidence("front obstacle", x, y)
         # Every named location the robot can no longer reach from where it is,
-        # so the planner does not try them one by one.
+        # so the planner does not try them one by one
         here = self.path[max(self.waypoint_index - 1, 0)]
         self.last_evidence["unreachable"] = sorted(
             loc for loc in self.locations
-            if loc != here and self._shortest_path(here, loc) is None
+            if loc != here and self._find_path(here, loc) is None
         )
         self.active_location = None
         return BLOCKED
-
-    def _set_route(self, start_node: str) -> bool:
-        """Plan from start_node to the active location; False if no route."""
-        path = self._shortest_path(start_node, self.active_location)
-        if path is None:
-            return False
-        nodes = self.graph["nodes"]
-        x, y, _ = self.gps.getValues()
-        self.route_start = (x, y)
-        self.path = path
-        self.waypoints = [nodes[n] for n in path]
-        self.waypoint_index = 0
-        self.steps = 0
-        self.max_steps = self._step_limit(path)
-        self.avoiding = None
-        self.avoid_failed = set()
-        return True
-
-    def _shortest_path(self, start: str, goal: str):
-        """Dijkstra over the graph, skipping edges found blocked."""
-        nodes = self.graph["nodes"]
-        neighbours = {name: [] for name in nodes}
-        for u, v in self.graph["edges"]:
-            if frozenset((u, v)) in self.blocked_edges:
-                continue
-            length = math.dist(nodes[u], nodes[v])
-            neighbours[u].append((v, length))
-            neighbours[v].append((u, length))
-
-        queue = [(0.0, start, [start])]
-        done = set()
-        while queue:
-            length, node, path = heapq.heappop(queue)
-            if node == goal:
-                return path
-            if node in done:
-                continue
-            done.add(node)
-            for nxt, step in neighbours[node]:
-                if nxt not in done:
-                    heapq.heappush(queue, (length + step, nxt, path + [nxt]))
-        return None
-
-    def _step_limit(self, path) -> int:
-        """Progress limit in controller steps for driving this route."""
-        x, y, _ = self.gps.getValues()
-        points = [(x, y)] + [tuple(self.graph["nodes"][n]) for n in path]
-        length = sum(math.dist(a, b) for a, b in zip(points, points[1:]))
-        seconds = length / (CRUISE_SPEED * WHEEL_RADIUS) * TIMEOUT_MARGIN + TIMEOUT_EXTRA_SECONDS
-        return int(seconds * 1000 / self.timestep)
 
     def _record_evidence(self, reason: str, x: float, y: float):
         self.last_evidence = {
@@ -392,7 +387,7 @@ class Navigator:
                 " - ".join(sorted(edge)) for edge in self.blocked_edges
             )
 
-    def _front_is_blocked(self, threshold=FRONT_THRESHOLD) -> bool:
+    def _front_is_blocked(self, threshold=100.0) -> bool:
         return max(self.proximity[i].getValue() for i in (0, 1, 6, 7)) > threshold
 
     def cancel(self):
