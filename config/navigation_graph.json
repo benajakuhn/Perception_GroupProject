@@ -15,7 +15,9 @@
     "office_b":              [3.5, 2.0],
     "office_a_approach":     [-3.0, 1.7],
     "office_b_approach":     [2.8, 1.7],
-    "meeting_room_approach": [3.0, -1.7]
+    "meeting_room_approach": [3.0, -1.7],
+    "hall_west":             [-1.2, 0.9],
+    "hall_east":             [1.2, 0.9]
   },
   "edges": [
     ["reception", "centre_south"],
@@ -32,6 +34,10 @@
     ["office_b_entry", "office_b_approach"],
     ["office_b_approach", "office_b"],
     ["meeting_room_entry", "meeting_room_approach"],
-    ["meeting_room_approach", "meeting_room"]
+    ["meeting_room_approach", "meeting_room"],
+    ["centre", "hall_west"],
+    ["hall_west", "centre_north"],
+    ["centre", "hall_east"],
+    ["hall_east", "centre_north"]
   ]
 }
