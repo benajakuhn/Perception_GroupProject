@@ -1,23 +1,18 @@
 {
   "nodes": {
-    "reception":             [-0.8, -2.8],
-    "centre_south":          [0.0, -1.15],
-    "centre":                [0.0, 0.0],
-    "centre_north":          [0.0, 1.7],
-    "main_corridor":         [0.0, 2.4],
-    "laboratory_entry":      [-2.45, -0.75],
-    "office_a_entry":        [-2.45, 0.75],
-    "meeting_room_entry":    [2.45, -0.75],
-    "office_b_entry":        [2.45, 0.75],
-    "laboratory":            [-3.5, -2.0],
-    "office_a":              [-3.5, 2.0],
-    "meeting_room":          [3.5, -2.0],
-    "office_b":              [3.5, 2.0],
-    "office_a_approach":     [-3.0, 1.7],
-    "office_b_approach":     [2.8, 1.7],
-    "meeting_room_approach": [3.0, -1.7],
-    "hall_west":             [-1.2, 0.9],
-    "hall_east":             [1.2, 0.9]
+    "reception": [-0.8, -2.8],
+    "centre_south": [0.0, -1.15],
+    "centre": [0.0, 0.0],
+    "centre_north": [0.0, 1.7],
+    "main_corridor": [0.0, 2.4],
+    "laboratory_entry": [-2.45, -0.75],
+    "office_a_entry": [-2.45, 0.75],
+    "meeting_room_entry": [2.45, -0.75],
+    "office_b_entry": [2.45, 0.75],
+    "laboratory": [-3.5, -2.0],
+    "office_a": [-3.5, 2.0],
+    "meeting_room": [3.5, -2.0],
+    "office_b": [3.5, 2.0]
   },
   "edges": [
     ["reception", "centre_south"],
@@ -27,17 +22,10 @@
     ["centre_south", "laboratory_entry"],
     ["laboratory_entry", "laboratory"],
     ["centre_north", "office_a_entry"],
+    ["office_a_entry", "office_a"],
     ["centre_south", "meeting_room_entry"],
+    ["meeting_room_entry", "meeting_room"],
     ["centre_north", "office_b_entry"],
-    ["office_a_entry", "office_a_approach"],
-    ["office_a_approach", "office_a"],
-    ["office_b_entry", "office_b_approach"],
-    ["office_b_approach", "office_b"],
-    ["meeting_room_entry", "meeting_room_approach"],
-    ["meeting_room_approach", "meeting_room"],
-    ["centre", "hall_west"],
-    ["hall_west", "centre_north"],
-    ["centre", "hall_east"],
-    ["hall_east", "centre_north"]
+    ["office_b_entry", "office_b"]
   ]
 }
