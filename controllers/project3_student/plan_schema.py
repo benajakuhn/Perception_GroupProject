@@ -18,6 +18,9 @@ PLAN_VERSION = "1.0"
 MAX_TOTAL_STEPS = 20
 MAX_NESTING_DEPTH = 2
 MAX_TEXT_LENGTH = 240
+# Excessive repeated navigation: a plan may drive to the same location at most
+# this often (counting both branches of conditionals), e.g. lab -> office -> lab.
+MAX_VISITS_PER_LOCATION = 2
 
 ACTION_REQUIRED_FIELDS = {
     "navigate": {"location"},

@@ -183,6 +183,61 @@ class PlanValidatorTests(unittest.TestCase):
         self.assertTrue(any("prohibited content 'eval('" in e for e in errors))
 
 
+class SemanticSafetyTests(unittest.TestCase):
+    """Contradictory steps and excessive repeated navigation (spec section 8)."""
+
+    def validate(self, *steps):
+        return PlanValidator().validate({"version": "1.0", "goal": "g", "steps": list(steps)})
+
+    @staticmethod
+    def nav(location):
+        return {"action": "navigate", "location": location}
+
+    SEARCH = {"action": "search", "object": "ball", "colour": "red"}
+
+    def test_steps_after_stop_are_rejected(self):
+        valid, errors = self.validate({"action": "stop"}, self.nav("laboratory"))
+        self.assertFalse(valid)
+        self.assertIn("after 'stop'", errors[0])
+
+    def test_stop_at_the_end_or_ending_a_branch_is_accepted(self):
+        valid, errors = self.validate(self.nav("laboratory"), self.SEARCH, {
+            "action": "conditional",
+            "condition": {"source": "last_search_result", "operator": "found", "value": True},
+            "then": [{"action": "stop"}], "else": []},
+            self.nav("office_a"))
+        self.assertTrue(valid, errors)
+
+    def test_back_and_forth_navigation_is_rejected(self):
+        valid, errors = self.validate(*[self.nav("laboratory" if i % 2 == 0 else "office_a")
+                                        for i in range(6)])
+        self.assertFalse(valid)
+        self.assertTrue(any("drives to 'laboratory' 3 times" in e for e in errors), errors)
+
+    def test_going_back_once_is_accepted(self):
+        valid, errors = self.validate(self.nav("laboratory"), self.nav("office_a"),
+                                      self.nav("laboratory"))
+        self.assertTrue(valid, errors)
+
+    def test_visits_in_branches_are_counted(self):
+        branch = {"action": "conditional",
+                  "condition": {"source": "last_search_result", "operator": "found", "value": False},
+                  "then": [self.nav("office_b"), self.SEARCH], "else": []}
+        valid, errors = self.validate(self.nav("office_b"), self.SEARCH, branch,
+                                      self.nav("laboratory"), self.SEARCH, branch)
+        self.assertFalse(valid)
+
+    def test_repeated_search_at_the_same_place_is_rejected(self):
+        valid, errors = self.validate(self.nav("laboratory"), self.SEARCH, self.SEARCH)
+        self.assertFalse(valid)
+        self.assertIn("repeated search", errors[0])
+
+    def test_search_for_another_object_at_the_same_place_is_accepted(self):
+        valid, errors = self.validate(self.nav("laboratory"), self.SEARCH,
+                                      {"action": "search", "object": "box", "colour": "blue"})
+        self.assertTrue(valid, errors)
+
+
 class RevisionCheckTests(unittest.TestCase):
     """PlanValidator.check_revision: extra rules for a replanned remainder."""
 
