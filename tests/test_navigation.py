@@ -241,6 +241,16 @@ class NavigatorTests(unittest.TestCase):
         self.assertEqual(navigator.path[0], "centre_north")
         self.assertFalse(robot.collided)
 
+    def test_reaches_the_meeting_room_search_view_past_the_furniture(self):
+        # Meeting table, blue box and blue cylinder as placed in the world.
+        furniture = [(3.65, -2.5, 1.55, 0.8), (3.15, -1.45, 0.2, 0.2),
+                     (3.0, -2.1, 0.16, 0.16)]
+        robot, navigator = make(-0.8, -2.8, obstacles=furniture)
+        self.assertEqual(drive(robot, navigator, "meeting_room"), SUCCEEDED)
+        self.assertEqual(drive(robot, navigator, "meeting_room_view"), SUCCEEDED)
+        self.assertLess(math.dist((robot.x, robot.y), (2.5, -2.9)), 0.2)
+        self.assertFalse(robot.collided)
+
     def test_obstacle_next_to_target_counts_as_arrival(self):
         # A box on the approach line, about 0.2 m before the laboratory stop point.
         robot, navigator = make(-0.8, -2.8, obstacles=[(-3.37, -1.85, 0.1, 0.1)])
