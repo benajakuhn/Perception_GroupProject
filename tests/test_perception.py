@@ -147,6 +147,17 @@ class RealWebotsFrameTests(unittest.TestCase):
                                 ObjectPerception.FOUND_CONFIDENCE)
         self.assertLess(detections[0].image_x, 0)       # ball is left of centre
 
+    def test_real_red_box_rejected(self):
+        # Office B's red box at an angle: circularity 0.78 (close to the
+        # ball's) but fill 0.63, below MIN_FILL.
+        self.assertEqual(detect(real_frame("office_b_red_box.png")), [])
+
+    def test_ball_in_office_b_found(self):
+        detections = detect(real_frame("office_b_ball.png"))
+        self.assertEqual(len(detections), 1)
+        self.assertGreaterEqual(detections[0].confidence,
+                                ObjectPerception.FOUND_CONFIDENCE)
+
     def test_floor_pads_without_ball_give_nothing(self):
         for name in ("meeting_room_pad_no_ball.png", "laboratory_pad_no_ball.png",
                      "office_b_pad_no_ball.png"):
