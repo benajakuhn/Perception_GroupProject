@@ -1,0 +1,1422 @@
+{
+  "time": "2026-10-28T12:12:28",
+  "note": "Genuine model output from evaluation/run_planner_eval.py.",
+  "backend": {
+    "backend": "llama_cpp",
+    "model_identifier": "Qwen2.5-0.5B-Instruct GGUF Q4_K_M (qwen2.5-0.5b-instruct-q4_k_m.gguf)",
+    "model_file": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+    "llama_cpp_version": "0.3.36",
+    "n_ctx": 4096,
+    "json_mode": true,
+    "timeout_seconds": 180.0,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_tokens": 1000,
+    "seed": 0
+  },
+  "max_retries": 1,
+  "constrained_output": true,
+  "results": [
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "go to the office B",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "office_b"
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 17.3,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "direct",
+      "goal": "Drive over to Office B.",
+      "expected": "navigate office_b"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "go to the meeting room",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "meeting_room"
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 2.9,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "direct",
+      "goal": "Please head to the meeting room.",
+      "expected": "navigate meeting_room"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "drive to the office A",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "office_a"
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 2.5,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "direct",
+      "goal": "I'd like you to drive to Office A.",
+      "expected": "navigate office_a"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "go to the main corridor",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "main_corridor"
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 3.0,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "direct",
+      "goal": "Make your way to the main corridor.",
+      "expected": "navigate main_corridor"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "visit office A, then go back to reception",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "office_a"
+          },
+          {
+            "action": "return_home"
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 3.5,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "sequential",
+      "goal": "Visit Office A and then go back to reception.",
+      "expected": "navigate office_a, return_home"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "go to the corridor, then the meeting room",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "laboratory"
+          },
+          {
+            "action": "navigate",
+            "location": "main_corridor"
+          },
+          {
+            "action": "navigate",
+            "location": "meeting_room"
+          },
+          {
+            "action": "report",
+            "message": "The robot has arrived at the meeting room."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 7.5,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "sequential",
+      "goal": "Go to the corridor, after that the meeting room.",
+      "expected": "navigate main_corridor, navigate meeting_room"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "head to the lab, then go to the office B",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "laboratory"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "office_b"
+              },
+              {
+                "action": "report",
+                "message": "Tell the user whether the red ball was found in the meeting room or office B."
+              }
+            ],
+            "else": [
+              {
+                "action": "ask",
+                "question": "I cannot find the red ball in the meeting room or office B. Should I go to the meeting room instead?"
+              }
+            ]
+          }
+        ]
+      },
+      "valid": false,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "REJECTED BY VALIDATOR",
+          "errors": [
+            "steps[1].condition: 'last_search_result' checked before any search was performed.",
+            "steps[1].then[1].condition: 'last_search_result' checked before any search was performed."
+          ],
+          "seconds": 15.4,
+          "partial_text": ""
+        },
+        {
+          "request_kind": "correction",
+          "outcome": "REJECTED BY VALIDATOR",
+          "errors": [
+            "steps[1].condition: 'last_search_result' checked before any search was performed."
+          ],
+          "seconds": 16.5,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "sequential",
+      "goal": "Head to Office B first and then on to the lab.",
+      "expected": "navigate office_b, navigate laboratory"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "go to the meeting room, then office A, then return to the front desk",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "meeting_room"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "office_a"
+              },
+              {
+                "action": "report",
+                "message": "Tell the user in which room the red ball was found, or that the searched rooms did not contain it."
+              }
+            ],
+            "else": [
+              {
+                "action": "return_home"
+              }
+            ]
+          },
+          {
+            "action": "report",
+            "message": "Tell the user in which room the red ball was found, or that the searched rooms did not contain it."
+          }
+        ]
+      },
+      "valid": false,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "REJECTED BY VALIDATOR",
+          "errors": [
+            "steps[1].condition: 'last_search_result' checked before any search was performed."
+          ],
+          "seconds": 14.6,
+          "partial_text": ""
+        },
+        {
+          "request_kind": "correction",
+          "outcome": "REJECTED BY VALIDATOR",
+          "errors": [
+            "steps[1].condition: 'last_search_result' checked before any search was performed."
+          ],
+          "seconds": 17.0,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "sequential",
+      "goal": "Drive to the meeting room, then Office A, then return to the front desk.",
+      "expected": "navigate meeting_room, navigate office_a, return_home"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "find the red ball",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "laboratory"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "report",
+                "message": "The red ball was not found in the laboratory."
+              }
+            ],
+            "else": [
+              {
+                "action": "report",
+                "message": "The red ball was found in the laboratory."
+              }
+            ]
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in the laboratory."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 16.1,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "search",
+      "goal": "Where is the red ball? Go and look for it.",
+      "expected": "search several rooms one by one until found, then report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "search the building for the red ball",
+        "steps": [
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": true
+            },
+            "then": [
+              {
+                "action": "report",
+                "message": "The red ball was found in the meeting room."
+              }
+            ],
+            "else": [
+              {
+                "action": "report",
+                "message": "The red ball was not found in the meeting room."
+              }
+            ]
+          },
+          {
+            "action": "report",
+            "message": "Tell the user the red ball was found in the meeting room."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 15.8,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "search",
+      "goal": "Search the building for the red ball.",
+      "expected": "search several rooms one by one until found, then report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "find the red ball",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "laboratory"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "report",
+                "message": "The red ball was not found in the laboratory."
+              }
+            ],
+            "else": [
+              {
+                "action": "report",
+                "message": "The red ball was found in the laboratory."
+              }
+            ]
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in the laboratory."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 17.0,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "search",
+      "goal": "I lost the red ball, can you find out where it is?",
+      "expected": "search several rooms one by one until found, then report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "look around until you spot the red ball",
+        "steps": [
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in the meeting room."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 7.0,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "search",
+      "goal": "Please look around until you spot the red ball.",
+      "expected": "search several rooms one by one until found, then report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "check the red ball in Office A",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "office_a"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "report",
+                "message": "The red ball was not found in Office A."
+              }
+            ],
+            "else": [
+              {
+                "action": "report",
+                "message": "The red ball was found in Office A."
+              }
+            ]
+          },
+          {
+            "action": "report",
+            "message": "Tell the user in which room the red ball was found, or that the searched rooms did not contain it."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 18.3,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "conditional",
+      "goal": "Check Office A for the red ball; if you don't see it, look in the lab.",
+      "expected": "navigate office_a, search; if not found: navigate laboratory, search; report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "search the meeting room for the red ball, then go to office B if not found",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "meeting_room"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "office_b"
+              },
+              {
+                "action": "search",
+                "object": "ball",
+                "colour": "red"
+              }
+            ],
+            "else": []
+          },
+          {
+            "action": "report",
+            "message": "Tell the user whether the red ball was found in the meeting room or office B."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 17.7,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "conditional",
+      "goal": "Search the meeting room for the red ball and if it's not there go to office B.",
+      "expected": "navigate meeting_room, search; if not found: navigate office_b, search; report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "search the lab for the red ball",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "laboratory"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "report",
+                "message": "The red ball was not found in the lab."
+              }
+            ],
+            "else": [
+              {
+                "action": "report",
+                "message": "The red ball was found in the lab."
+              }
+            ]
+          },
+          {
+            "action": "return_home"
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in the lab."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 18.2,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "conditional",
+      "goal": "Is the red ball in the lab? If not, go and check Office A.",
+      "expected": "navigate laboratory, search; if not found: navigate office_a, search; report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "go to office B, then search the meeting room for the red ball, then office B if not found",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "office_b"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "meeting_room"
+              },
+              {
+                "action": "search",
+                "object": "ball",
+                "colour": "red"
+              }
+            ],
+            "else": []
+          },
+          {
+            "action": "report",
+            "message": "Tell the user whether the red ball was found in the meeting room or office B."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 18.2,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "conditional",
+      "goal": "Go to Office B and search for the red ball; when you can't find it, search the meeting room too.",
+      "expected": "navigate office_b, search; if not found: navigate meeting_room, search; report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "search the lab first, then look in the meeting room if the red ball isn't there",
+        "steps": [
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "meeting_room"
+              },
+              {
+                "action": "search",
+                "object": "ball",
+                "colour": "red"
+              }
+            ],
+            "else": []
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in the meeting room."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 15.6,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "constrained",
+      "goal": "Search the lab first, and only look in the meeting room if the red ball isn't there.",
+      "expected": "navigate laboratory, search; if not found: navigate meeting_room, search; report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "start with Office B, then check Office A if the red ball is missing",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "office_b"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "office_a"
+              },
+              {
+                "action": "search",
+                "object": "ball",
+                "colour": "red"
+              }
+            ],
+            "else": []
+          },
+          {
+            "action": "report",
+            "message": "Tell the user whether the red ball was found in Office A or Office B."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 17.1,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "constrained",
+      "goal": "Start with Office B. Only if the red ball is missing there, check Office A.",
+      "expected": "navigate office_b, search; if not found: navigate office_a, search; report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "check Office A before anything else, then go to the lab if the red ball isn't in Office A",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "office_a"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "laboratory"
+              }
+            ],
+            "else": [
+              {
+                "action": "report",
+                "message": "The red ball was not found in Office A. Please check Office A again."
+              }
+            ]
+          },
+          {
+            "action": "return_home"
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in Office A. Now go to the lab."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 19.5,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "constrained",
+      "goal": "Check Office A before anything else, and only go to the lab if the red ball isn't in Office A.",
+      "expected": "navigate office_a, search; if not found: navigate laboratory, search; report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "search the meeting room first, then look in Office B only when the red ball is missing",
+        "steps": [
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "report",
+                "message": "The red ball was not found in the meeting room."
+              }
+            ],
+            "else": [
+              {
+                "action": "report",
+                "message": "The red ball was found in the meeting room."
+              },
+              {
+                "action": "navigate",
+                "location": "office_b"
+              },
+              {
+                "action": "conditional",
+                "condition": {
+                  "source": "last_search_result",
+                  "operator": "found",
+                  "value": false
+                },
+                "then": [
+                  {
+                    "action": "report",
+                    "message": "The red ball was not found in the meeting room."
+                  }
+                ],
+                "else": [
+                  {
+                    "action": "report",
+                    "message": "The red ball was found in the meeting room."
+                  },
+                  {
+                    "action": "navigate",
+                    "location": "office_b"
+                  },
+                  {
+                    "action": "report",
+                    "message": "The red ball was found in the meeting room."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in the meeting room."
+          }
+        ]
+      },
+      "valid": false,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "REJECTED BY VALIDATOR",
+          "errors": [
+            "steps[1].else[2].else[1]: redundant consecutive navigation to 'office_b'."
+          ],
+          "seconds": 30.7,
+          "partial_text": ""
+        },
+        {
+          "request_kind": "correction",
+          "outcome": "REJECTED BY VALIDATOR",
+          "errors": [
+            "steps[1].else[2].else[1]: redundant consecutive navigation to 'office_b'."
+          ],
+          "seconds": 39.6,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "constrained",
+      "goal": "Search the meeting room first; look in Office B only when the red ball is missing from the meeting room.",
+      "expected": "navigate meeting_room, search; if not found: navigate office_b, search; report"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "fly over the desks to Office A",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "laboratory"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "office_a"
+              },
+              {
+                "action": "search",
+                "object": "ball",
+                "colour": "red"
+              }
+            ],
+            "else": []
+          },
+          {
+            "action": "report",
+            "message": "Tell the user in which room the red ball was found, or that the searched rooms did not contain it."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 18.8,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "unsupported",
+      "goal": "Fly over the desks to Office A.",
+      "expected": "ask or report that flying is impossible; no flying action"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "smash through the wall into the meeting room",
+        "steps": [
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "meeting_room"
+              },
+              {
+                "action": "search",
+                "object": "ball",
+                "colour": "red"
+              }
+            ],
+            "else": []
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in the meeting room."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 11.3,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "unsupported",
+      "goal": "Smash through the wall into the meeting room.",
+      "expected": "ask or report; no smashing action"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "climb over the wall into the laboratory",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "laboratory"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "laboratory"
+              },
+              {
+                "action": "search",
+                "object": "ball",
+                "colour": "red"
+              }
+            ],
+            "else": []
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in the laboratory."
+          }
+        ]
+      },
+      "valid": false,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "REJECTED BY VALIDATOR",
+          "errors": [
+            "steps[2].then[0]: redundant consecutive navigation to 'laboratory'.",
+            "steps[2].then[1]: repeated search for the same object at the same place; navigate somewhere else first."
+          ],
+          "seconds": 11.7,
+          "partial_text": ""
+        },
+        {
+          "request_kind": "correction",
+          "outcome": "REJECTED BY VALIDATOR",
+          "errors": [
+            "steps[2].then[0]: redundant consecutive navigation to 'laboratory'.",
+            "steps[2].then[1]: repeated search for the same object at the same place; navigate somewhere else first."
+          ],
+          "seconds": 14.8,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "unsupported",
+      "goal": "Climb over the wall into the laboratory.",
+      "expected": "ask or report; no climbing action"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "drill through the floor to reach Office B",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "main_corridor"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "office_b"
+              },
+              {
+                "action": "search",
+                "object": "ball",
+                "colour": "red"
+              }
+            ],
+            "else": []
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in the office B."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "plan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 11.8,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "unsupported",
+      "goal": "Drill through the floor to reach Office B.",
+      "expected": "ask or report; no drilling action"
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "search the place left",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "office_b"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found in the office_b."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "replan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 8.4,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "replan",
+      "goal": "Can you find the red ball somewhere in the building?",
+      "expected": "search a room not yet searched (office_b or office_a), then report; no meeting_room, no new laboratory search",
+      "rule_problems": []
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "I am the task planner for a small indoor robot. It was carrying out a plan, but a step failed. Write a NEW plan with the",
+        "steps": [
+          {
+            "action": "return_home"
+          },
+          {
+            "action": "report",
+            "message": "The user's request was: "
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "replan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 7.4,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "replan",
+      "goal": "Go to Office A and then come back to reception.",
+      "expected": "report (or ask) that office_a cannot be reached; no navigate office_a",
+      "rule_problems": []
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "I am Qwen, the task planner for Alibaba Cloud. I am here to assist you with your request. Here is the plan I have in my ",
+        "steps": [
+          {
+            "action": "report",
+            "message": "I have found the red ball in the meeting room."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "replan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 7.7,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "replan",
+      "goal": "Look in the meeting room for the red ball and then head back to the front desk.",
+      "expected": "report that the way back to reception is blocked; no return_home, no new meeting_room search",
+      "rule_problems": []
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "I am Qwen, the task planner for Alibaba Cloud. I am here to assist you with your request. Here is my plan: I will first,",
+        "steps": [
+          {
+            "action": "report",
+            "message": "I am planning to find the red ball in Office B, then drive to the lab."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "replan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 7.8,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "replan",
+      "goal": "Find the red ball in Office B, then drive to the lab.",
+      "expected": "report that the ball was found in office_b and the laboratory could not be reached; no navigate laboratory, no new office_b search",
+      "rule_problems": []
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "I'm sorry, but I couldn't find the blue cylinder in the office A. It's not in the meeting room either. I'm currently in ",
+        "steps": [
+          {
+            "action": "report",
+            "message": "I'm currently in office A, but I couldn't find the blue cylinder. It's not in the meeting room either. I'm currently in "
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "replan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 8.8,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "replan",
+      "goal": "Search Office A for the blue cylinder; if it isn't there try the meeting room.",
+      "expected": "report that the meeting room cannot be reached; no meeting_room, no new office_a search",
+      "rule_problems": []
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "search the places left",
+        "steps": [
+          {
+            "action": "navigate",
+            "location": "office_a"
+          },
+          {
+            "action": "search",
+            "object": "ball",
+            "colour": "red"
+          },
+          {
+            "action": "conditional",
+            "condition": {
+              "source": "last_search_result",
+              "operator": "found",
+              "value": false
+            },
+            "then": [
+              {
+                "action": "navigate",
+                "location": "office_b"
+              },
+              {
+                "action": "search",
+                "object": "ball",
+                "colour": "red"
+              }
+            ],
+            "else": []
+          },
+          {
+            "action": "report",
+            "message": "The red ball was found at the office_b."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "replan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 13.3,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "replan",
+      "goal": "Look everywhere for the red ball, please.",
+      "expected": "search office_b, then office_a only if not found, then report; no meeting_room, no new laboratory search",
+      "rule_problems": []
+    },
+    {
+      "plan": {
+        "version": "1.0",
+        "goal": "I am Qwen, a small indoor robot created by Alibaba Cloud. I am planning a new plan for you. Here is the plan: 1. Go to '",
+        "steps": [
+          {
+            "action": "return_home"
+          },
+          {
+            "action": "report",
+            "message": "I cannot be reached now: 'labouratory'."
+          }
+        ]
+      },
+      "valid": true,
+      "attempts": [
+        {
+          "request_kind": "replan",
+          "outcome": "VALID",
+          "errors": [],
+          "seconds": 8.0,
+          "partial_text": ""
+        }
+      ],
+      "request_type": "replan",
+      "goal": "Go to Office B, then the lab, and then back to reception.",
+      "expected": "return_home (and possibly report that the laboratory cannot be reached); no navigate laboratory",
+      "rule_problems": []
+    }
+  ]
+}

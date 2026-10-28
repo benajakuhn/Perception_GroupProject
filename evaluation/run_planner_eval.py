@@ -5,6 +5,7 @@ Usage (from the project folder):
     python evaluation/run_planner_eval.py --only conditional
     python evaluation/run_planner_eval.py --only replan
     python evaluation/run_planner_eval.py --no-schema   # without output_schema.py
+    python evaluation/run_planner_eval.py --config my_config.json  # another model
 
 Each goal goes through the same steps the controller will use:
     generate_plan -> PlanValidator -> if rejected: correct_plan
@@ -53,31 +54,58 @@ TEST_GOALS = [
      "navigate office_b"),
     ("direct", "Please head to the meeting room.",
      "navigate meeting_room"),
+    ("direct", "I'd like you to drive to Office A.",
+     "navigate office_a"),
+    ("direct", "Make your way to the main corridor.",
+     "navigate main_corridor"),
 
     ("sequential", "Visit Office A and then go back to reception.",
      "navigate office_a, return_home"),
     ("sequential", "Go to the corridor, after that the meeting room.",
      "navigate main_corridor, navigate meeting_room"),
+    ("sequential", "Head to Office B first and then on to the lab.",
+     "navigate office_b, navigate laboratory"),
+    ("sequential", "Drive to the meeting room, then Office A, then return to the front desk.",
+     "navigate meeting_room, navigate office_a, return_home"),
 
     ("search", "Where is the red ball? Go and look for it.",
      "search several rooms one by one until found, then report"),
     ("search", "Search the building for the red ball.",
+     "search several rooms one by one until found, then report"),
+    ("search", "I lost the red ball, can you find out where it is?",
+     "search several rooms one by one until found, then report"),
+    ("search", "Please look around until you spot the red ball.",
      "search several rooms one by one until found, then report"),
 
     ("conditional", "Check Office A for the red ball; if you don't see it, look in the lab.",
      "navigate office_a, search; if not found: navigate laboratory, search; report"),
     ("conditional", "Search the meeting room for the red ball and if it's not there go to office B.",
      "navigate meeting_room, search; if not found: navigate office_b, search; report"),
+    ("conditional", "Is the red ball in the lab? If not, go and check Office A.",
+     "navigate laboratory, search; if not found: navigate office_a, search; report"),
+    ("conditional", "Go to Office B and search for the red ball; when you can't find it, "
+                    "search the meeting room too.",
+     "navigate office_b, search; if not found: navigate meeting_room, search; report"),
 
     ("constrained", "Search the lab first, and only look in the meeting room if the red ball isn't there.",
      "navigate laboratory, search; if not found: navigate meeting_room, search; report"),
     ("constrained", "Start with Office B. Only if the red ball is missing there, check Office A.",
      "navigate office_b, search; if not found: navigate office_a, search; report"),
+    ("constrained", "Check Office A before anything else, and only go to the lab if the "
+                    "red ball isn't in Office A.",
+     "navigate office_a, search; if not found: navigate laboratory, search; report"),
+    ("constrained", "Search the meeting room first; look in Office B only when the red ball "
+                    "is missing from the meeting room.",
+     "navigate meeting_room, search; if not found: navigate office_b, search; report"),
 
     ("unsupported", "Fly over the desks to Office A.",
      "ask or report that flying is impossible; no flying action"),
     ("unsupported", "Smash through the wall into the meeting room.",
      "ask or report; no smashing action"),
+    ("unsupported", "Climb over the wall into the laboratory.",
+     "ask or report; no climbing action"),
+    ("unsupported", "Drill through the floor to reach Office B.",
+     "ask or report; no drilling action"),
 ]
 
 
@@ -266,7 +294,7 @@ def main():
         print(f"No goals of type {arguments.only!r}.")
         return 1
 
-    interface = LLMInterface()
+    interface = LLMInterface(config_path=arguments.config)
     if arguments.no_schema:
         interface.constrained_output = False
     if interface.backend is None:
@@ -313,6 +341,9 @@ def parse_arguments():
                         help="run only goals of this request type")
     parser.add_argument("--no-schema", action="store_true",
                         help="send no output schema (compare with constrained output)")
+    parser.add_argument("--config", default=None,
+                        help="LLM config file to use instead of config/llm_config.json, "
+                             "e.g. to evaluate another model")
     return parser.parse_args()
 
 

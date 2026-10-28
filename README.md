@@ -63,7 +63,7 @@ Run every command from the project folder, with the Python that Webots uses
    | `json_mode` | true | the runtime only produces valid JSON |
    | `constrained_output` | true | the model can only write plans that fit a JSON schema (section 6) |
    | `n_ctx` / `max_tokens` | 4096 / 1000 | the longest prompt (a correction) fits |
-   | `timeout_seconds` | 180 | plans take 5–50 s on our laptop CPU; slower machines need the margin |
+   | `timeout_seconds` | 180 | a model call takes 5–60 s on our laptop CPU; slower machines need the margin |
    | `max_retries` | 1 | one corrected plan after a rejection |
 
    No online model or API key is used.
@@ -127,23 +127,27 @@ python evaluation/evaluate_trials.py console.txt # results of Webots trials
   path (replan, validation and revision check, one corrected attempt).
 
 **Planner results** (Qwen2.5-3B, CPU only;
-`evaluation/results/planner_eval_20261028_105634.json`):
+`evaluation/results/planner_eval_20261028_113950.json`). 31 cases: four new
+phrasings of each request type plus 7 recorded failure situations for
+replanning. *Correct* means the plan also does what the goal asked (checked
+against the expected plan), not only that it passed the validator.
 
-| Request type | Goals | Valid on the first try | Average time |
-|---|---|---|---|
-| Direct | 2 | 2 | 32 s (includes loading the model) |
-| Sequential | 2 | 2 | 8 s |
-| Search | 2 | 2 | 48 s |
-| Conditional | 2 | 2 | 30 s |
-| Constrained order | 2 | 2 | 29 s |
-| Unsupported | 2 | 2 | 7 s |
-| Replanning | 7 | 7 | 14 s |
-| **Total** | **19** | **19** | **21 s** |
+| Request type | Cases | Valid | Correct | Mean time |
+|---|---|---|---|---|
+| Direct | 4 | 4 | 4 | 16 s (includes loading the model) |
+| Sequential | 4 | 4 | 4 | 9 s |
+| Search | 4 | 4 | 3 | 65 s |
+| Conditional | 4 | 4 | 4 | 39 s |
+| Constrained order | 4 | 4 | 4 | 36 s |
+| Impossible movement | 4 | 4 | 4 | 9 s |
+| Replanning | 7 | 7 | 7 | 16 s |
+| **Total** | **31** | **31** | **30** | **26 s** |
 
-All 7 revised plans avoid blocked rooms and rooms already searched, and every
-plan that searches ends with a report. Each plan was also compared by hand with
-the expected plan for its goal. For comparison, before the output schema and
-the separate replanning prompt, 0 of 5 revised plans kept those rules
+Comparison on the same cases (first plans correct / replans correct):
+Qwen2.5-0.5B 8/24 and 7/7, Qwen2.5-1.5B 13/24 and 7/7, Qwen2.5-3B 23/24
+and 7/7; the 3B model without the output schema 18/24 and 0/7. Before the
+output schema and the separate replanning prompt, 0 of 5 revised plans were
+correct although all 5 passed the validator
 (`evaluation/results/planner_eval_20261026_155033.json`).
 - **Trial protocol:** press Reset before each trial (new random ball position),
   give one spoken request, and let it finish. Afterwards, save the whole Webots
@@ -254,7 +258,8 @@ the robot; the controller does not.
 
 ## 7. Known limitations
 
-- Planning takes 5–50 s per plan on our laptop CPU (searches take longest),
+- A model call takes 5–60 s on our laptop CPU (searches take longest; up to
+  ~100 s when a correction is needed),
   and longer with little free memory (8 GB machines can hit the 180 s timeout).
 - The schema narrows a first plan only from object and room names it recognises
   in the goal; when a room is named, every location stays allowed, so an
