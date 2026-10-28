@@ -4,17 +4,18 @@ Usage (from the project folder):
     python evaluation/run_planner_eval.py
     python evaluation/run_planner_eval.py --only conditional
     python evaluation/run_planner_eval.py --only replan
+    python evaluation/run_planner_eval.py --no-schema   # without output_schema.py
 
 Each goal goes through the same steps the controller will use:
     generate_plan -> PlanValidator -> if rejected: correct_plan
     (at most max_retries corrections, from config/llm_config.json)
 
-Replan cases start from a recorded failure instead of a fresh goal:
-    replan(goal, state, failure trace, remaining steps) -> PlanValidator -> ...
-Their valid plans are also checked against the replan rules (no navigating to
-a blocked room, no searching a room again). In the controller the same rules
-are PlanValidator.check_revision, and a revision that breaks them gets one
-corrected attempt, so the '1st try' column is before that correction.
+Replan cases start from a recorded failure instead of a fresh goal and take
+exactly the controller's path (replan_goal_off_thread):
+    replan -> PlanValidator.validate + check_revision -> if rejected: one
+    replan with the rejected plan and its errors
+Their valid plans are also checked against the case's own rules (no driving
+to a blocked or failed room, no searching a room again).
 
 The results are GENUINE model output, not test fixtures. Every model call is
 also logged by LLMInterface in logs/llm_<date>.jsonl, and a summary of each
@@ -129,6 +130,13 @@ def replan_case(goal, expected, trace, remaining, current_location,
     search_results = [entry["evidence"] for entry in trace
                       if entry["step"].get("action") == "search"]
     state.last_search_result = search_results[-1] if search_results else None
+    # As RobotSkills records them; the controller's replan sees them too.
+    state.search_results = [
+        {"target": " ".join(value for value in (entry["step"].get("colour"),
+                                                entry["step"].get("object")) if value),
+         "location": entry["evidence"]["location"], "result": entry["evidence"]["result"]}
+        for entry in trace if entry["step"].get("action") == "search"
+    ]
     return {
         "request_type": "replan", "goal": goal, "expected": expected,
         "world_state": state.as_dict(),
@@ -214,6 +222,32 @@ REPLAN_CASES = [
         current_location="office_a", blocked_routes=["meeting_room"],
         no_navigate=["meeting_room"], no_search=["office_a"],
     ),
+    # Blocked early in a whole-building search: two rooms are still left.
+    replan_case(
+        "Look everywhere for the red ball, please.",
+        "search office_b, then office_a only if not found, then report; "
+        "no meeting_room, no new laboratory search",
+        trace=[arrived("laboratory"), searched("ball", "red", "laboratory", "NOT_FOUND"),
+               expanded(if_not_found(NAV_MEETING_ROOM, SEARCH_RED_BALL)),
+               navigation_failed(NAV_MEETING_ROOM, "BLOCKED", "front obstacle")],
+        remaining=[NAV_MEETING_ROOM, SEARCH_RED_BALL,
+                   if_not_found(NAV_OFFICE_B, SEARCH_RED_BALL),
+                   if_not_found(NAV_OFFICE_A, SEARCH_RED_BALL),
+                   report("Tell the user where the red ball was found.")],
+        current_location="laboratory", blocked_routes=["meeting_room"],
+        no_navigate=["meeting_room"], no_search=["laboratory"],
+    ),
+    # A sequence: the middle stop is blocked, the way home is still open.
+    replan_case(
+        "Go to Office B, then the lab, and then back to reception.",
+        "return_home (and possibly report that the laboratory cannot be reached); "
+        "no navigate laboratory",
+        trace=[arrived("office_b"),
+               navigation_failed(NAV_LABORATORY, "BLOCKED", "front obstacle")],
+        remaining=[NAV_LABORATORY, RETURN_HOME],
+        current_location="office_b", blocked_routes=["laboratory"],
+        no_navigate=["laboratory"],
+    ),
 ]
 
 
@@ -233,6 +267,8 @@ def main():
         return 1
 
     interface = LLMInterface()
+    if arguments.no_schema:
+        interface.constrained_output = False
     if interface.backend is None:
         print(f"Planner not available: {interface.unavailable_reason}")
         return 1
@@ -248,7 +284,10 @@ def main():
                   + f" -> {case['trace'][-1]['status']}")
         print(f"  Expected:  {case['expected']}")
 
-        result = plan_with_corrections(interface, validator, case)
+        if "trace" in case:
+            result = replan_like_controller(interface, validator, case)
+        else:
+            result = plan_with_corrections(interface, validator, case)
         result.update(request_type=case["request_type"], goal=case["goal"],
                       expected=case["expected"])
         if "trace" in case:
@@ -272,6 +311,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Evaluate the planner on test goals.")
     parser.add_argument("--only", choices=request_types,
                         help="run only goals of this request type")
+    parser.add_argument("--no-schema", action="store_true",
+                        help="send no output schema (compare with constrained output)")
     return parser.parse_args()
 
 
@@ -279,16 +320,44 @@ def parse_arguments():
 # The planning loop (the same steps the main controller will use)
 # ----------------------------------------------------------------------------
 
-def plan_with_corrections(interface, validator, case):
-    """Ask for a plan, validate it, and ask for corrections if it is rejected.
+def replan_like_controller(interface, validator, case):
+    """A replan case, the same steps as replan_goal_off_thread in the controller."""
+    world_state, attempts = case["world_state"], []
+    plan, valid, errors = None, False, []
+    for attempt_number in (1, 2):
+        start_time = time.monotonic()
+        try:
+            if attempt_number == 1:
+                plan = interface.replan(case["goal"], world_state, case["trace"], case["remaining"])
+            else:
+                plan = interface.replan(case["goal"], world_state, case["trace"], case["remaining"],
+                                        rejected_plan=plan, rejected_errors=errors)
+            valid, errors = validator.validate(plan)
+            if valid:
+                valid, errors = validator.check_revision(plan, world_state)
+            outcome = "VALID" if valid else "REJECTED BY VALIDATOR"
+        except PlanParseError as error:
+            plan, valid, errors, outcome = None, False, error.errors, "NO JSON IN ANSWER"
+        except LLMBackendError as error:
+            plan, valid, errors = None, False, [str(error)]
+            outcome = f"MODEL ERROR ({type(error).__name__})"
+        seconds = round(time.monotonic() - start_time, 1)
+        request_kind = "replan" if attempt_number == 1 else "replan correction"
+        print(f"  Attempt {attempt_number} ({request_kind}, {seconds} s): {outcome}")
+        for error in errors:
+            print(f"      - {error}")
+        attempts.append({"request_kind": request_kind, "outcome": outcome,
+                         "errors": errors, "seconds": seconds, "partial_text": ""})
+        # The controller gives up after an exception or the corrected attempt.
+        if valid or plan is None:
+            break
+    return {"plan": plan, "valid": valid, "attempts": attempts}
 
-    Replan cases make their first request with replan() from the recorded
-    failure; corrections then use the same world state as that request.
-    """
+
+def plan_with_corrections(interface, validator, case):
+    """Ask for a plan, validate it, and ask for corrections if it is rejected."""
     goal = case["goal"]
-    is_replan = "trace" in case
-    # Goal cases start at reception; replan cases start where the failure left the robot.
-    world_state = case["world_state"] if is_replan else WorldState().as_dict()
+    world_state = WorldState().as_dict()   # goal cases start at reception
     attempts = []
     plan = None
     valid = False
@@ -296,10 +365,7 @@ def plan_with_corrections(interface, validator, case):
     errors = []
 
     for attempt_number in range(1, interface.max_retries + 2):
-        if attempt_number > 1:
-            request_kind = "correction"
-        else:
-            request_kind = "replan" if is_replan else "plan"
+        request_kind = "correction" if attempt_number > 1 else "plan"
         model_failed = False
         partial_text = ""
         start_time = time.monotonic()
@@ -307,8 +373,6 @@ def plan_with_corrections(interface, validator, case):
         try:
             if request_kind == "plan":
                 plan = interface.generate_plan(goal, world_state)
-            elif request_kind == "replan":
-                plan = interface.replan(goal, world_state, case["trace"], case["remaining"])
             else:
                 plan = interface.correct_plan(goal, world_state, rejected_output, errors)
             valid, errors = validator.validate(plan)
@@ -389,6 +453,7 @@ def print_header(interface, goal_count):
           f"max_tokens {description.get('max_tokens')}, "
           f"json_mode {description.get('json_mode')}")
     print(f"Max retries:  {interface.max_retries}")
+    print(f"Schema:       {'output_schema.py' if interface.constrained_output else 'none'}")
     print(f"Goals:        {goal_count}")
     print(LINE)
 
@@ -492,6 +557,7 @@ def save_results(interface, results):
         "note": "Genuine model output from evaluation/run_planner_eval.py.",
         "backend": interface.backend.description(),
         "max_retries": interface.max_retries,
+        "constrained_output": interface.constrained_output,
         "results": results,
     }, indent=2), encoding="utf-8")
     print(f"\nSaved results to {results_file.relative_to(PROJECT_ROOT)}")

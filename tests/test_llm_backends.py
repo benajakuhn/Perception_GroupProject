@@ -142,6 +142,7 @@ class FakeLlama:
         self.error = error
 
     def create_chat_completion(self, **request):
+        self.last_request = request
         if self.error is not None:
             raise self.error
         return self._stream()
@@ -176,6 +177,26 @@ class LlamaCppBackendWithFakeModelTests(unittest.TestCase):
         self.backend.model = FakeLlama(['{"version": "1.0", "st'], finish_reason="length")
         self.backend.complete("prompt")
         self.assertEqual(self.backend.last_finish_reason, "length")
+
+    def test_schema_is_sent_as_the_response_format(self):
+        schema = {"type": "object", "properties": {"ok": {"const": True}}}
+        self.backend.model = FakeLlama(['{"ok": true}'])
+        self.backend.complete("prompt", schema=schema)
+        self.assertEqual(self.backend.model.last_request["response_format"],
+                         {"type": "json_object", "schema": schema})
+
+    def test_schema_is_used_even_without_json_mode(self):
+        self.backend.json_mode = False
+        self.backend.model = FakeLlama(['{"ok": true}'])
+        self.backend.complete("prompt", schema={"type": "object"})
+        self.assertEqual(self.backend.model.last_request["response_format"]["schema"],
+                         {"type": "object"})
+
+    def test_no_schema_keeps_plain_json_mode(self):
+        self.backend.model = FakeLlama(['{"ok": true}'])
+        self.backend.complete("prompt")
+        self.assertEqual(self.backend.model.last_request["response_format"],
+                         {"type": "json_object"})
 
     def test_library_error_becomes_backend_error(self):
         self.backend.model = FakeLlama(error=ValueError(

@@ -9,6 +9,8 @@ in one fixed table. It is deliberately strict:
 
 The same table is shown to the model in the prompt (prompt_builder.py).
 """
+import re
+
 from plan_schema import VALID_LOCATIONS
 
 LOCATION_NICKNAMES = {
@@ -39,6 +41,22 @@ def _build_name_table() -> dict:
 
 
 NAME_TO_LOCATION = _build_name_table()
+
+
+def locations_named_in(text: str) -> list:
+    """Location ids named in free text, by id or nickname, in order of mention.
+
+    'Go to the lab, then Office B.' -> ['laboratory', 'office_b']. Used to
+    decide how far the output schema may narrow a plan, never to plan.
+    """
+    words = " ".join(re.sub(r"[^a-z0-9]+", " ", str(text).lower()).split())
+    padded = f" {words} "
+    found = []
+    for name, location in NAME_TO_LOCATION.items():
+        position = padded.find(f" {name} ")
+        if position != -1:
+            found.append((position, location))
+    return list(dict.fromkeys(location for _, location in sorted(found)))
 
 
 def ground_locations(plan: dict) -> list:

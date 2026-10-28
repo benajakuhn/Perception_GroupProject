@@ -4,8 +4,11 @@ This is the only module that talks to a model. It knows nothing about plans,
 JSON parsing or validation; those live in prompt_builder.py, plan_parser.py
 and plan_validator.py. Every backend offers the same two methods:
 
-    complete(prompt) -> raw answer text
-    description()    -> model and settings, for the logs and the report
+    complete(prompt, schema=None) -> raw answer text
+    description()                 -> model and settings, for the logs and the report
+
+schema is an optional JSON schema (output_schema.py) that limits what the
+model can write. LlamaCppBackend enforces it; MockBackend only records it.
 """
 import json
 import time
@@ -47,7 +50,7 @@ def create_backend(config: dict, project_root: Path):
 
 
 class LlamaCppBackend:
-    """Runs a local GGUF model (the Lab 5 Qwen model) with llama-cpp-python."""
+    """Runs a local GGUF model (Qwen model) with llama-cpp-python."""
 
     def __init__(self, config: dict, project_root: Path):
         self.model_identifier = config.get("model_identifier", "unknown")
@@ -68,12 +71,10 @@ class LlamaCppBackend:
             "max_tokens": int(config.get("max_tokens", 1000)),
             "seed": int(config.get("seed", 0)),
         }
-        self.model = None  # loaded on the first complete() call, in the worker thread
-        # Why the last answer ended: "stop" (finished) or "length" (cut off at
-        # max_tokens or the context window). None when no answer was written.
+        self.model = None
         self.last_finish_reason = None
 
-    def complete(self, prompt: str) -> str:
+    def complete(self, prompt: str, schema: dict = None) -> str:
         if self.model is None:
             self._load_model()
 
@@ -82,11 +83,15 @@ class LlamaCppBackend:
             "stream": True,
             **self.generation_settings,
         }
-        if self.json_mode:
+        if schema is not None:
+            # llama-cpp turns the schema into a grammar: tokens that do not
+            # fit it cannot be written. A schema implies JSON, so it is used
+            # even with json_mode off.
+            request["response_format"] = {"type": "json_object", "schema": schema}
+        elif self.json_mode:
             request["response_format"] = {"type": "json_object"}
 
-        # Streaming delivers the answer in small pieces, so the time limit can
-        # be checked while the model is still writing.
+        #Streaming delivers the answer in small pieces, so the time limit can be checked while the model is still writing.
         start_time = time.monotonic()
         answer_pieces = []
         self.last_finish_reason = None
@@ -106,9 +111,9 @@ class LlamaCppBackend:
         except LLMBackendError:
             raise
         except Exception as error:
-            # llama-cpp reports problems such as a prompt longer than n_ctx as
-            # ValueError/RuntimeError; turn them into backend errors so callers
-            # log and handle them like every other model failure.
+            #llama-cpp reports problems such as a prompt longer than n_ctx as
+            #ValueError/RuntimeError; turn them into backend errors so callers
+            #log and handle them like every other model failure.
             raise LLMBackendError(
                 f"llama-cpp failed: {type(error).__name__}: {error}"
             ) from error
@@ -153,15 +158,17 @@ class MockBackend:
     """Returns saved answers in order.
 
     TEST FIXTURES ONLY: these answers are hand-written, not model output, and
-    must never be reported as model performance.
+    must not be reported as model performance.
     """
 
     def __init__(self, saved_responses: list):
         self.saved_responses = list(saved_responses)
         self.received_prompts = []
+        self.received_schemas = []
 
-    def complete(self, prompt: str) -> str:
+    def complete(self, prompt: str, schema: dict = None) -> str:
         self.received_prompts.append(prompt)
+        self.received_schemas.append(schema)
         call_number = len(self.received_prompts)
         if call_number > len(self.saved_responses):
             raise LLMBackendError(

@@ -22,13 +22,15 @@ Supported object types and colours:
 Planning rules:
 - Only plan what the user asked for. Do not add extra rooms, searches or
   conditionals.
-- End the plan with a report step only if it contains a search.
+- A plan that contains a search must end with one report step. A plan
+  without a search has no report step.
 - If the user asks to go back or return to reception after other steps, end the
   plan with a return_home step.
 - To search a room, navigate there first. A conditional on last_search_result
   must come right after a search step.
-- If the user names no room for a search, search the valid locations above one
-  at a time, as in the 'locate' example, stopping as soon as the ball is found.
+- If the user names no room for a search, search these rooms one at a time,
+  in this order, as in the 'locate' example, stopping as soon as the object is
+  found: {SEARCH_ROOMS}.
 - The robot can only drive on the floor. For any other movement (flying,
   jumping, climbing, going through walls), return only an ask step offering
   to drive instead.

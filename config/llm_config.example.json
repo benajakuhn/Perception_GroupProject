@@ -12,5 +12,6 @@
   "max_tokens": "Caps the return length",
   "seed": "for reproducibility",
   "json_mode": "ensures output is always valid JSON: true",
+  "constrained_output": "true: the model can only write plans that fit output_schema.py",
   "n_threads": "null: llama_cpp chooses n threads"
 }

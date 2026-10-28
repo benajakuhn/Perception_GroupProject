@@ -5,8 +5,17 @@ Every request follows the same flow:
 
     prompt_builder -> llm_backends -> plan_parser -> location_grounding -> plan
     (build prompt)    (ask model)     (text->dict)   (nickname -> id)     (UNTRUSTED)
+                      + output_schema: what the model can write at all
 
-Every model call is written to logs/llm_<date>.jsonl. This class never
+Before each request, prompt_builder works out the request's "situation" in
+code (plan_situation / replan_situation). With "constrained_output" (config,
+default true) the backend gets a JSON schema built from it, so the model can
+only write what the situation allows: e.g. searching only for the object the
+user named, and for replans driving only to the places still left. Location
+grounding remains a fallback for backends that cannot enforce a schema.
+
+Every model call is written to logs/llm_<date>.jsonl, with the situation
+(the schema is rebuilt from it exactly, so the large schema is not logged). This class never
 validates plans: the main loop passes every returned plan to PlanValidator.
 All methods are slow and must run in the worker thread, never in the Webots
 loop.
@@ -24,11 +33,14 @@ from llm_backends import (
     create_backend,
 )
 from location_grounding import ground_locations
+from output_schema import plan_output_schema, replan_output_schema
 from plan_parser import parse_plan_text
 from prompt_builder import (
     build_correction_prompt,
     build_plan_prompt,
     build_replan_prompt,
+    plan_situation,
+    replan_situation,
 )
 
 
@@ -63,6 +75,8 @@ class LLMInterface:
         self.template = self.prompt_path.read_text(encoding="utf-8")
 
         self.max_retries = int(self.config.get("max_retries", 1))
+        # False sends no schema, e.g. to compare with unconstrained output.
+        self.constrained_output = bool(self.config.get("constrained_output", True))
         self.log_dir = self.project_root / self.config.get("log_dir", "logs")
         self.last_call = None
 
@@ -77,7 +91,8 @@ class LLMInterface:
     def generate_plan(self, user_goal: str, world_state: dict) -> Dict[str, Any]:
         """First plan for a new goal."""
         prompt = build_plan_prompt(self.template, user_goal, world_state)
-        return self._ask_model(prompt, request_kind="plan")
+        situation = plan_situation(user_goal)
+        return self._ask_model(prompt, "plan", situation, plan_output_schema(situation))
 
     def correct_plan(self, user_goal: str, world_state: dict,
                      rejected_output, errors: list) -> Dict[str, Any]:
@@ -89,38 +104,44 @@ class LLMInterface:
         prompt = build_correction_prompt(
             self.template, user_goal, world_state, rejected_output, errors
         )
-        return self._ask_model(prompt, request_kind="correction")
+        situation = plan_situation(user_goal)
+        return self._ask_model(prompt, "correction", situation, plan_output_schema(situation))
 
     def replan(self, original_goal: str, world_state: dict,
                execution_trace: list, remaining_steps: list = None,
                rejected_plan=None, rejected_errors: list = None) -> Dict[str, Any]:
         """Plan for the remaining work after a step failed during execution.
 
-        Only the most recent trace entries go into the prompt. The revised
-        plan is untrusted and must pass PlanValidator like the first plan.
-        rejected_plan/rejected_errors ask for a corrected revision.
+        The places the revision may still drive to are worked out in code
+        (prompt_builder.replan_situation) and enforced by the output schema.
+        The revised plan is untrusted and must pass PlanValidator like the
+        first plan. rejected_plan/rejected_errors ask for a corrected revision.
         """
-        prompt = build_replan_prompt(
-            self.template, original_goal, world_state,
-            execution_trace, remaining_steps or [],
-            rejected_plan=rejected_plan, rejected_errors=rejected_errors,
-        )
-        return self._ask_model(prompt, request_kind="replan")
+        situation = replan_situation(original_goal, world_state,
+                                     execution_trace, remaining_steps or [])
+        prompt = build_replan_prompt(situation, rejected_plan=rejected_plan,
+                                     rejected_errors=rejected_errors)
+        return self._ask_model(prompt, "replan", situation, replan_output_schema(situation))
 
     # ------------------------------------------------------------------
     # Shared steps
     # ------------------------------------------------------------------
 
-    def _ask_model(self, prompt: str, request_kind: str) -> Dict[str, Any]:
+    def _ask_model(self, prompt: str, request_kind: str, situation: dict,
+                   schema: dict) -> Dict[str, Any]:
         """Send the prompt, parse the answer, log the call, return the plan."""
         if self.backend is None:
             raise LLMUnavailableError(self.unavailable_reason)
+        if not self.constrained_output:
+            schema = None
 
         call_record = {
             "time": datetime.now().isoformat(timespec="seconds"),
             "request_kind": request_kind,
             "backend": self.backend.description(),
             "prompt": prompt,
+            "situation": situation,
+            "constrained": schema is not None,
             "raw_response": None,
             "parsed_plan": None,
             "parse_errors": [],
@@ -133,7 +154,7 @@ class LLMInterface:
         # 1. Ask the model. Failed calls (e.g. timeouts) are logged too.
         start_time = time.monotonic()
         try:
-            raw_text = self.backend.complete(prompt)
+            raw_text = self.backend.complete(prompt, schema=schema)
         except LLMBackendError as error:
             call_record["seconds"] = round(time.monotonic() - start_time, 2)
             call_record["backend_error"] = f"{type(error).__name__}: {error}"
