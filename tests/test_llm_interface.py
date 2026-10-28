@@ -136,10 +136,47 @@ class CorrectAndReplanTests(LLMInterfaceTestCase):
         remaining_steps = [{"action": "search", "object": "ball", "colour": "red"}]
         plan = interface.replan("find the red ball", self.world_state, trace, remaining_steps)
         prompt = self.mock.received_prompts[0]
-        show("replan", returned_plan=plan, prompt_end="\n" + end_of_prompt(prompt))
+        show("replan", returned_plan=plan, prompt="\n" + prompt)
         self.assertIn("front obstacle at ps0", prompt)
-        self.assertIn('"action": "search"', prompt)
+        self.assertIn("find the red ball", prompt)
         self.assertEqual(interface.last_call["request_kind"], "replan")
+
+
+class OutputSchemaTests(LLMInterfaceTestCase):
+    def test_plan_requests_send_the_plan_schema(self):
+        interface = self.make_interface([VALID_PLAN_TEXT, VALID_PLAN_TEXT])
+        interface.generate_plan("go to the lab", self.world_state)
+        interface.correct_plan("go to the lab", self.world_state, "bad", ["No JSON."])
+        for schema in self.mock.received_schemas:
+            self.assertEqual(schema["properties"]["version"], {"const": "1.0"})
+        self.assertTrue(interface.last_call["constrained"])
+
+    def test_log_holds_the_situation_the_schema_was_built_from(self):
+        from output_schema import plan_output_schema
+        interface = self.make_interface([VALID_PLAN_TEXT])
+        interface.generate_plan("find the red ball", self.world_state)
+        record = self.read_log_records()[0]
+        self.assertEqual(record["situation"]["search_targets"],
+                         [{"object": "ball", "colour": "red"}])
+        self.assertEqual(plan_output_schema(record["situation"]), self.mock.received_schemas[0])
+        self.assertNotIn("output_schema", record)
+
+    def test_replan_schema_allows_only_a_report_when_nothing_is_left(self):
+        interface = self.make_interface([VALID_PLAN_TEXT])
+        trace = [{"step": {"action": "navigate", "location": "laboratory"},
+                  "status": "BLOCKED", "evidence": {"reason": "front obstacle"}}]
+        interface.replan("go to the lab", self.world_state, trace,
+                         [{"action": "navigate", "location": "laboratory"}])
+        steps = self.mock.received_schemas[0]["properties"]["steps"]
+        self.assertEqual(steps["maxItems"], 1)
+        self.assertEqual(steps["items"]["properties"]["action"], {"const": "report"})
+
+    def test_constrained_output_can_be_switched_off(self):
+        interface = self.make_interface([VALID_PLAN_TEXT],
+                                        extra_config={"constrained_output": False})
+        interface.generate_plan("go to the lab", self.world_state)
+        self.assertEqual(self.mock.received_schemas, [None])
+        self.assertFalse(interface.last_call["constrained"])
 
 
 class LoggingTests(LLMInterfaceTestCase):
@@ -154,7 +191,8 @@ class LoggingTests(LLMInterfaceTestCase):
             short_record = {key: value for key, value in record.items() if key != "prompt"}
             show("log record (prompt left out)", record=json.dumps(short_record, indent=2))
         self.assertEqual(len(records), 2)
-        expected_fields = {"time", "request_kind", "backend", "prompt", "raw_response",
+        expected_fields = {"time", "request_kind", "backend", "prompt", "situation",
+                           "constrained", "raw_response",
                            "parsed_plan", "parse_errors", "repairs", "backend_error",
                            "finish_reason", "seconds"}
         self.assertEqual(set(records[0]), expected_fields)
@@ -183,7 +221,7 @@ class LoggingTests(LLMInterfaceTestCase):
 class TimingOutBackend:
     """Fake backend that always times out after writing part of an answer."""
 
-    def complete(self, prompt):
+    def complete(self, prompt, schema=None):
         raise LLMTimeoutError("Model did not finish within 45 seconds.",
                               partial_text='{"version": "1.0", "steps": [\n\n\n\n')
 

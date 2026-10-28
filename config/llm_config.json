@@ -9,5 +9,6 @@
     "max_tokens": 1000,
     "seed": 0,
     "json_mode": true,
+    "constrained_output": true,
     "n_threads": null
 }

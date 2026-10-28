@@ -13,6 +13,7 @@ sys.path.insert(0, str(CONTROLLER_DIR))
 from location_grounding import (  # noqa: E402
     LOCATION_NICKNAMES,
     ground_locations,
+    locations_named_in,
     lookup_key,
 )
 from plan_schema import VALID_LOCATIONS  # noqa: E402
@@ -126,6 +127,17 @@ class NicknameTableTests(unittest.TestCase):
                 self.assertIn(already_used_by, (None, location),
                               f"{nickname!r} would map to two locations")
                 seen_keys[key] = location
+
+
+class LocationsNamedInTests(unittest.TestCase):
+    def test_ids_and_nicknames_in_order_of_mention(self):
+        self.assertEqual(locations_named_in("Go to the lab, then Office B."),
+                         ["laboratory", "office_b"])
+        self.assertEqual(locations_named_in("check office_a and the main corridor"),
+                         ["office_a", "main_corridor"])
+
+    def test_no_location_named(self):
+        self.assertEqual(locations_named_in("Search the building for the red ball."), [])
 
 
 if __name__ == "__main__":
