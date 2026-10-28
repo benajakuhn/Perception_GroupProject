@@ -60,8 +60,14 @@ class RobotSkills:
             return "SUCCEEDED"
         elif action == "report":
             # The plan was written before any search ran, so its message cannot
-            # know the outcome; after a search, report what the camera found.
-            message = self.search_summary() or step["message"]
+            # know the outcome; after a search, report what the camera found,
+            # plus the places navigation could not reach (a replan's message
+            # explains those, but it would otherwise be dropped here).
+            summary = self.search_summary()
+            if summary:
+                message = " ".join(filter(None, (summary, self.unreachable_summary())))
+            else:
+                message = step["message"]
             self.speech.speak(message)
             self.last_evidence = {"reported": message}
             return "SUCCEEDED"
@@ -207,6 +213,17 @@ class RobotSkills:
             places = join_options((location_name(loc) for loc in dict.fromkeys(searched)), "and")
             sentences.append(f"I searched {places} and did not find the {target} there.")
         return " ".join(sentences)
+
+    def unreachable_summary(self):
+        """'I could not reach the laboratory.' from this task's blocked routes, or None.
+
+        Built from navigation evidence (world_state.blocked_routes), never from
+        the plan's text, so it is as truthful as search_summary().
+        """
+        places = list(dict.fromkeys(self.world_state.blocked_routes))
+        if not places:
+            return None
+        return f"I could not reach {join_options((location_name(p) for p in places), 'or')}."
 
     def _navigation_evidence(self, target: str, status: str) -> dict:
         """Navigator evidence (R4) if it provides any, else what is known here."""

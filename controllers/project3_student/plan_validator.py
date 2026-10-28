@@ -102,7 +102,7 @@ class PlanValidator:
                 for branch in ("then", "else"):
                     self._check_revision_steps(step.get(branch) or [], location, blocked,
                                                searched, errors, f"{here}.{branch}")
-            elif action in {"navigate", "return_home"}:
+            elif action in ("navigate", "return_home"):
                 location = step.get("location") or "reception"
                 if location in blocked:
                     errors.append(f"{here}: {location} is blocked or unreachable; "
@@ -119,7 +119,8 @@ class PlanValidator:
             if not isinstance(step, dict):
                 continue
             action = step.get("action")
-            if action in {"navigate", "return_home"}:
+            # A tuple compares with ==, so a list or dict action cannot crash this.
+            if action in ("navigate", "return_home"):
                 location = step.get("location") if action == "navigate" else "reception"
                 if isinstance(location, str):
                     visits[location] = visits.get(location, 0) + 1
@@ -141,6 +142,11 @@ class PlanValidator:
                 continue
 
             action = step.get("action")
+            if not isinstance(action, str):
+                # Checked first: a list or dict here would crash the set
+                # lookups below instead of being reported.
+                errors.append(f"{here}: action must be a string, got {action!r}.")
+                continue
             if action == "stop" and i < len(steps) - 1:
                 # TaskExecutive ends the task at a stop step.
                 errors.append(f"{here}: steps after 'stop' would never run; "
@@ -200,11 +206,14 @@ class PlanValidator:
                     errors.append(f"{here}: unsupported object {obj!r}.")
                 if colour is not None and (not isinstance(colour, str) or colour not in SUPPORTED_COLOURS):
                     errors.append(f"{here}: unsupported colour {colour!r}.")
-                target = (obj, colour)
-                if target in context["searched_here"]:
-                    errors.append(f"{here}: repeated search for the same object at the "
-                                  "same place; navigate somewhere else first.")
-                context["searched_here"] = context["searched_here"] | {target}
+                # Only well-formed targets are tracked (a list or dict cannot
+                # go into the set; it is already reported above).
+                if isinstance(obj, str) and (colour is None or isinstance(colour, str)):
+                    target = (obj, colour)
+                    if target in context["searched_here"]:
+                        errors.append(f"{here}: repeated search for the same object at the "
+                                      "same place; navigate somewhere else first.")
+                    context["searched_here"] = context["searched_here"] | {target}
                 context["has_searched"] = True
 
             elif action in {"ask", "report"}:
@@ -231,6 +240,9 @@ class PlanValidator:
 
         source = condition.get("source")
         operator = condition.get("operator")
+        if not isinstance(source, str) or not isinstance(operator, str):
+            errors.append(f"{here}.condition source and operator must be strings.")
+            return
 
         if source not in ALLOWED_CONDITION_SOURCES:
             errors.append(f"{here}.condition has an unsupported source {source!r}.")

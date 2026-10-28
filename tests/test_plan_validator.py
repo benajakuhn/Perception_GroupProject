@@ -2,6 +2,7 @@
 
 Tests schema adherence, argument types, semantic constraints, and security rules.
 """
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -231,6 +232,50 @@ class SemanticSafetyTests(unittest.TestCase):
         valid, errors = self.validate(self.nav("laboratory"), self.SEARCH, self.SEARCH)
         self.assertFalse(valid)
         self.assertIn("repeated search", errors[0])
+
+    def test_non_string_action_is_reported_not_crashed_on(self):
+        for action in (["navigate"], {"name": "navigate"}, None, 3):
+            valid, errors = self.validate({"action": action, "location": "laboratory"})
+            self.assertFalse(valid)
+            self.assertIn("action must be a string", errors[0])
+
+    def test_non_string_condition_source_is_reported_not_crashed_on(self):
+        condition = {"source": {"name": "last_search_result"}, "operator": ["found"],
+                     "value": False}
+        valid, errors = self.validate(self.nav("laboratory"), self.SEARCH,
+                                      {"action": "conditional", "condition": condition,
+                                       "then": [], "else": []})
+        self.assertFalse(valid)
+        self.assertTrue(any("must be strings" in error for error in errors), errors)
+
+    def test_no_json_value_anywhere_crashes_the_validator(self):
+        """Every field of a valid plan replaced by odd JSON values: errors, never a crash."""
+        odd_values = [None, 3, 2.5, True, "", "x", [], ["navigate"], {}, {"a": 1}]
+        base = {"version": "1.0", "goal": "g", "steps": [
+            self.nav("laboratory"), dict(self.SEARCH),
+            {"action": "conditional",
+             "condition": {"source": "last_search_result", "operator": "found", "value": False},
+             "then": [self.nav("office_a")], "else": []},
+            {"action": "report", "message": "m"}]}
+        paths = []
+
+        def collect(node, path):
+            items = node.items() if isinstance(node, dict) else enumerate(node)
+            for key, value in items:
+                paths.append(path + [key])
+                if isinstance(value, (dict, list)):
+                    collect(value, path + [key])
+        collect(base, [])
+        for path in paths:
+            for value in odd_values:
+                plan = json.loads(json.dumps(base))
+                node = plan
+                for key in path[:-1]:
+                    node = node[key]
+                node[path[-1]] = value
+                with self.subTest(path=path, value=value):
+                    valid, errors = PlanValidator().validate(plan)
+                    self.assertIsInstance(errors, list)
 
     def test_search_for_another_object_at_the_same_place_is_accepted(self):
         valid, errors = self.validate(self.nav("laboratory"), self.SEARCH,
