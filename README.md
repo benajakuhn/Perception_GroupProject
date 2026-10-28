@@ -130,18 +130,20 @@ python evaluation/evaluate_trials.py console.txt # results of Webots trials
 `evaluation/results/planner_eval_20261028_113950.json`). 31 cases: four new
 phrasings of each request type plus 7 recorded failure situations for
 replanning. *Correct* means the plan also does what the goal asked (checked
-against the expected plan), not only that it passed the validator.
+against the expected plan), not only that it passed the validator. Times
+exclude the one-off model load on the first request (about 40 s for the 3B
+model).
 
 | Request type | Cases | Valid | Correct | Mean time |
 |---|---|---|---|---|
-| Direct | 4 | 4 | 4 | 16 s (includes loading the model) |
+| Direct | 4 | 4 | 4 | 6 s |
 | Sequential | 4 | 4 | 4 | 9 s |
 | Search | 4 | 4 | 3 | 65 s |
 | Conditional | 4 | 4 | 4 | 39 s |
 | Constrained order | 4 | 4 | 4 | 36 s |
 | Impossible movement | 4 | 4 | 4 | 9 s |
 | Replanning | 7 | 7 | 7 | 16 s |
-| **Total** | **31** | **31** | **30** | **26 s** |
+| **Total** | **31** | **31** | **30** | **25 s** |
 
 Comparison on the same cases (first plans correct / replans correct):
 Qwen2.5-0.5B 8/24 and 7/7, Qwen2.5-1.5B 13/24 and 7/7, Qwen2.5-3B 23/24
@@ -149,6 +151,7 @@ and 7/7; the 3B model without the output schema 18/24 and 0/7. Before the
 output schema and the separate replanning prompt, 0 of 5 revised plans were
 correct although all 5 passed the validator
 (`evaluation/results/planner_eval_20261026_155033.json`).
+
 - **Trial protocol:** press Reset before each trial (new random ball position),
   give one spoken request, and let it finish. Afterwards, save the whole Webots
   console to a text file and run `evaluate_trials.py` on it. The script pairs
