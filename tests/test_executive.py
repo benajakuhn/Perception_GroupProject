@@ -220,6 +220,38 @@ class ReportTests(unittest.TestCase):
         said = self.run_plan(["UNCERTAIN"], ["office_b"])
         self.assertEqual(said, "I may have seen the red ball in Office B, but I am not sure.")
 
+    def test_unreachable_places_are_added_after_a_search(self):
+        """A replan's report: the search summary plus where navigation could not go."""
+        from robot_skills import RobotSkills
+        world_state = WorldState()
+        world_state.search_results = [
+            {"target": "red ball", "location": "meeting_room", "result": "NOT_FOUND"}]
+        world_state.blocked_routes = ["reception"]
+        speech = FakeSpeech()
+        RobotSkills(None, None, None, speech, world_state).start(
+            {"action": "report", "message": "The way to the front desk is blocked."})
+        self.assertEqual(speech.spoken, [
+            "I searched the meeting room and did not find the red ball there. "
+            "I could not reach reception."])
+
+    def test_several_unreachable_places_are_joined(self):
+        from robot_skills import RobotSkills
+        world_state = WorldState()
+        world_state.blocked_routes = ["laboratory", "office_a", "laboratory"]
+        skills = RobotSkills(None, None, None, FakeSpeech(), world_state)
+        self.assertEqual(skills.unreachable_summary(),
+                         "I could not reach the laboratory or Office A.")
+
+    def test_report_without_search_keeps_the_plan_message_even_if_blocked(self):
+        """No search ran: the (replan's) message is all there is to say."""
+        from robot_skills import RobotSkills
+        world_state = WorldState()
+        world_state.blocked_routes = ["laboratory"]
+        speech = FakeSpeech()
+        RobotSkills(None, None, None, speech, world_state).start(
+            {"action": "report", "message": "I could not get to the laboratory."})
+        self.assertEqual(speech.spoken, ["I could not get to the laboratory."])
+
     def test_report_without_search_uses_plan_message(self):
         world_state = WorldState()
         speech = FakeSpeech()
