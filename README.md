@@ -61,8 +61,9 @@ Run every command from the project folder, with the Python that Webots uses
    | `temperature` | 0.0 | the same goal gives the same plan |
    | `seed` | 0 | reproducible runs |
    | `json_mode` | true | the runtime only produces valid JSON |
-   | `n_ctx` / `max_tokens` | 4096 / 1000 | the longest prompt (a replan) fits |
-   | `timeout_seconds` | 180 | a 3B model on a laptop CPU needs 20–80 s per plan |
+   | `constrained_output` | true | the model can only write plans that fit a JSON schema (section 6) |
+   | `n_ctx` / `max_tokens` | 4096 / 1000 | the longest prompt (a correction) fits |
+   | `timeout_seconds` | 180 | plans take 5–50 s on our laptop CPU; slower machines need the margin |
    | `max_retries` | 1 | one corrected plan after a rejection |
 
    No online model or API key is used.
@@ -111,15 +112,39 @@ validated plan, navigation events (`[NAV]`) and one `[TRIAL]` record per task.
 ```bash
 python -m unittest discover -s tests -v          # all tests, no Webots needed
 python evaluation/run_planner_eval.py            # real model on test goals
+python evaluation/run_planner_eval.py --no-schema  # the same without the output schema
 python evaluation/evaluate_trials.py console.txt # results of Webots trials
 ```
 
 - The unit tests use a mock LLM backend and saved responses where useful; those
-  are labelled as fixtures, not as model performance. Four tests run the real
-  model and are skipped when it is not installed.
+  are labelled as fixtures, not as model performance. Five tests need
+  llama-cpp-python (four of them run the real model) and are skipped when it is
+  not installed.
 - `run_planner_eval.py` sends test goals of each request type (direct,
   sequential, search, conditional, constrained order, unsupported, replanning)
   to the **real** model and saves the results in `evaluation/results/`.
+  Replanning cases start from a recorded failure and take the controller's exact
+  path (replan, validation and revision check, one corrected attempt).
+
+**Planner results** (Qwen2.5-3B, CPU only;
+`evaluation/results/planner_eval_20261028_105634.json`):
+
+| Request type | Goals | Valid on the first try | Average time |
+|---|---|---|---|
+| Direct | 2 | 2 | 32 s (includes loading the model) |
+| Sequential | 2 | 2 | 8 s |
+| Search | 2 | 2 | 48 s |
+| Conditional | 2 | 2 | 30 s |
+| Constrained order | 2 | 2 | 29 s |
+| Unsupported | 2 | 2 | 7 s |
+| Replanning | 7 | 7 | 14 s |
+| **Total** | **19** | **19** | **21 s** |
+
+All 7 revised plans avoid blocked rooms and rooms already searched, and every
+plan that searches ends with a report. Each plan was also compared by hand with
+the expected plan for its goal. For comparison, before the output schema and
+the separate replanning prompt, 0 of 5 revised plans kept those rules
+(`evaluation/results/planner_eval_20261026_155033.json`).
 - **Trial protocol:** press Reset before each trial (new random ball position),
   give one spoken request, and let it finish. Afterwards, save the whole Webots
   console to a text file and run `evaluate_trials.py` on it. The script pairs
@@ -147,11 +172,30 @@ status questions always work. **Cancellation policy:** "stop" cancels planning
 and execution, stops the motors and clears the pending work. A question asked
 by a plan waits 30 s (simulated) for the reply.
 
-**Planning (`llm_interface.py`, `prompt_builder.py`, `prompts/`).** The prompt
-lists the plan contract, actions, locations, objects and condition grammar, all
-generated from `plan_schema.py`, plus examples. The answer is parsed into a
-Python dict; syntax repairs and location nicknames ("lab") are handled in code.
-A rejected plan gets one corrected attempt with the validator's errors.
+**Planning (`llm_interface.py`, `prompt_builder.py`, `output_schema.py`,
+`prompts/`).** Before each request, code works out what the plan may contain
+(its *situation*), and the model plans within it:
+
+- *First plans:* the prompt lists the plan contract, actions, locations,
+  objects and condition grammar, all generated from `plan_schema.py`, plus
+  examples. It shows only where the robot is, never the previous task's search
+  result. Code reads the object asked for and any rooms named in the goal.
+- *Replans:* a separate short prompt states the facts worked out in code from
+  the trace and `WorldState`: what happened, where the robot stopped, rooms
+  already searched, blocked rooms, and the places still left to visit.
+- *Output schema:* llama-cpp turns a JSON schema built from the situation into
+  a grammar, so the model can only write what fits it: valid ids, a search only
+  for the object the user named, at most the validator's nesting depth, no
+  searching after the object was found, and a final report in any plan that
+  searches. A search with no room named only drives to the four search rooms. A
+  replan can only drive to the places still left; with none left it is a single
+  report.
+
+The answer is parsed into a Python dict (syntax repairs only); location
+nicknames ("lab") are mapped to ids as a fallback. A rejected plan gets one
+corrected attempt with the validator's errors and hints for errors the model
+tends to repeat. Every call is logged with its prompt, situation, raw answer
+and timing.
 
 **Validation (`plan_validator.py`).** Every initial, corrected and revised plan
 passes `PlanValidator.validate(plan) -> (valid, errors)` before execution:
@@ -162,17 +206,19 @@ code, motor or file/network text. Semantic checks: no steps after `stop`, no
 redundant consecutive navigation, at most 2 visits to the same location, no
 repeated search at the same place, no condition on a search result before a
 search. Revised plans are also checked by `check_revision`: no driving to a
-location found blocked, no searching a room already searched. The contract
-itself is unchanged (version 1.0).
+location found blocked, no searching a room already searched. Malformed values
+(e.g. a list where a word is expected) are reported as errors, never a crash; a
+test checks this for every field. The contract itself is unchanged (version
+1.0).
 
 **Execution (`task_executive.py`, `robot_skills.py`).** One small unit of work
 per Webots step. Conditionals are evaluated in code against `WorldState` (never
 with `eval`). Statuses: RUNNING, SUCCEEDED, FAILED, TIMEOUT, BLOCKED, CANCELLED.
 After FAILED/TIMEOUT/BLOCKED the remainder is replanned at most `MAX_REPLANS` = 2
-times, from bounded evidence: the last 5 trace entries plus facts worked out in
-code (where the robot stopped, rooms searched, blocked rooms, rooms still to
-search). A `report` after a search speaks what the camera found, not the model's
-text.
+times, from bounded evidence: the last 5 trace entries plus the facts worked out
+in code (see Planning). A `report` after a search speaks what the camera found
+and which places the robot could not reach, from sensor evidence, not the
+model's text.
 
 **Navigation (`navigation.py`, `config/navigation_graph.json`).** Dijkstra over
 the waypoint graph, GPS/compass heading control, arrival within 0.15 m, wheel
@@ -208,8 +254,11 @@ the robot; the controller does not.
 
 ## 7. Known limitations
 
-- Planning takes 20–80 s per plan on a laptop CPU, and longer with little free
-  memory (8 GB machines can hit the 180 s timeout).
+- Planning takes 5–50 s per plan on our laptop CPU (searches take longest),
+  and longer with little free memory (8 GB machines can hit the 180 s timeout).
+- The schema narrows a first plan only from object and room names it recognises
+  in the goal; when a room is named, every location stays allowed, so an
+  unrecognised phrasing never blocks a valid plan.
 - Speech recognition is tuned on a few voices; unusual accents and noisy rooms
   cause mishearings, which the robot answers with a clarification question.
 - Obstacle avoidance uses only the proximity sensors (~7 cm range), so the robot
