@@ -13,12 +13,13 @@ import json
 from pathlib import Path
 from collections import deque
 import math
-
-RUNNING = "RUNNING"
-SUCCEEDED = "SUCCEEDED"
-FAILED = "FAILED"
-BLOCKED = "BLOCKED"
-TIMEOUT = "TIMEOUT"
+from plan_schema import (
+    RUNNING,
+    SUCCEEDED,
+    FAILED,
+    BLOCKED,
+    TIMEOUT
+)
 
 # Driving around an obstacle. Sensor values follow the E-puck lookup table:
 # ~67 = nothing within 7 cm, 100 = ~6 cm, 300 = ~2.5 cm.

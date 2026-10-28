@@ -3,13 +3,16 @@
 Advances at most one small unit of work per Webots step, evaluating conditionals deterministically.
 """
 
-IDLE = "IDLE"
-RUNNING = "RUNNING"
-SUCCEEDED = "SUCCEEDED"
-FAILED = "FAILED"
-TIMEOUT = "TIMEOUT"
-BLOCKED = "BLOCKED"
-CANCELLED = "CANCELLED"
+from plan_schema import (
+    IDLE,
+    RUNNING,
+    FAILED,
+    SUCCEEDED,
+    TIMEOUT,
+    SUCCEEDED,
+    CANCELLED,
+    BLOCKED,
+)
 
 # Backstop only: every skill has its own progress limit (navigation from the
 # route length, search from its frame count). 3500 ticks (~112 s) cut off

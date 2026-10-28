@@ -15,7 +15,7 @@ from plan_validator import PlanValidator
 from robot_skills import RobotSkills
 from semantic_memory import SemanticMemory
 from speech_io import SpeechIO
-from task_executive import (
+from plan_schema import (
     BLOCKED,
     CANCELLED,
     FAILED,
