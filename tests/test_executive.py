@@ -10,11 +10,12 @@ from pathlib import Path
 CONTROLLER_DIR = Path(__file__).resolve().parents[1] / "controllers" / "project3_student"
 sys.path.insert(0, str(CONTROLLER_DIR))
 
-from task_executive import (
+from task_executive import TaskExecutive
+
+from plan_schema import (
     CANCELLED,
     RUNNING,
     SUCCEEDED,
-    TaskExecutive,
 )
 from world_state import WorldState
 

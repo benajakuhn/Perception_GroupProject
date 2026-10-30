@@ -21,10 +21,10 @@ from plan_schema import (
     FAILED,
     SUCCEEDED,
     TIMEOUT,
-    TaskExecutive,
 )
 from trial_log import TrialLog
 from world_state import WorldState
+from task_executive import TaskExecutive
 
 TIME_STEP = 32
 MAX_REPLANS = 2
