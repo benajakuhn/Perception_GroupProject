@@ -47,7 +47,7 @@ llama-cpp-python==0.3.36
 #    (the 4 real-model tests are skipped if the model file or llama-cpp-python
 #    is missing; with both installed they run and should pass)
 #        python evaluation/run_planner_eval.py
-#    (plans 12 test goals with the real model, prints each plan and a summary,
+#    (plans 31 test goals with the real model, prints each plan and a summary,
 #    and saves the results in evaluation/results/)
 #
 # 4. Run the robot: open worlds/project_genai_embodied_assistant.wbt in Webots
