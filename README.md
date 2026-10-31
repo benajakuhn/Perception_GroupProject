@@ -1,4 +1,4 @@
-# Generative-AI Embodied Robot Assistant (CSCI444/944, Group XX)
+# Generative-AI Embodied Robot Assistant (CSCI444/944, Group 10)
 
 A spoken-language robot assistant for Webots R2025a. The user speaks a goal
 ("Find the red ball", "Go to the lab, then come back to reception"). The robot

@@ -50,12 +50,6 @@ class ObjectPerception:
 
     def detect(self) -> List[Detection]:
         """Analyse the current camera image.
-
-        TODO:
-        - convert the Webots camera buffer to an image array;
-        - use colour/shape evidence;
-        - reject obvious distractors;
-        - return confidence or another uncertainty indicator.
         """
 
         # get the current camera image
@@ -190,10 +184,6 @@ class ObjectPerception:
 
     def update_search(self):
         """Inspect one frame and return (status, evidence).
-
-        Status is RUNNING, SUCCEEDED or FAILED. TODO: rotate/scan through the
-        main-thread skill controller, accumulate evidence over several frames,
-        and stop after a documented bound rather than looping indefinitely.
         """
 
         if not self.target:
