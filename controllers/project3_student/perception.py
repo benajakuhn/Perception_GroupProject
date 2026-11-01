@@ -22,6 +22,7 @@ class Detection:
     confidence: float
     image_x: Optional[float] = None
 
+
 class ObjectPerception:
     # Thresholds from real Webots search frames (logs/frames, meeting room):
     # the rendered ball has R~196 G~58 B~59 (red 3.3x green), circularity
@@ -49,22 +50,21 @@ class ObjectPerception:
         self.right_motor = right_motor
 
     def detect(self) -> List[Detection]:
-        """Analyse the current camera image.
-        """
+        """Analyse the current camera image."""
 
         # get the current camera image
         image = self.camera.getImage()
         if image is None:
             return []
 
-        #get the image width and height
+        # get the image width and height
         width = self.camera.getWidth()
         height = self.camera.getHeight()
 
-        #create 1D numpy array from the image buffer
+        # create 1D numpy array from the image buffer
         bgra = np.frombuffer(image, dtype=np.uint8)
 
-        #reshape the array to 3D grid (height, width, 4) for BGRA format
+        # reshape the array to 3D grid (height, width, 4) for BGRA format
         bgra = bgra.reshape((height, width, 4))
 
         # drop the alpha channel to get BGR format
@@ -77,11 +77,7 @@ class ObjectPerception:
 
         # create mask for red objects (0 for non red, 255 for red)
         # red objects have red value that is greater than 60 and at least RED_RATIO
-        # times the green and blue values. Measured in Webots frames: the meeting
-        # room's floor pad, which the robot
-        # stands on while searching, is only 2.25x; with a 2x rule the pad filled
-        # half the image and swallowed a ball touching it. (Measured: the
-        # rendered ball is 3.3x, not the ~19x of its base colour.)
+        # times the green and blue values (see RED_RATIO above)
         mask = ((r > 60) & (r > self.RED_RATIO * g) & (r > self.RED_RATIO * b)).astype(np.uint8) * 255
 
         # find contours in the mask
@@ -146,7 +142,6 @@ class ObjectPerception:
         detections.sort(key=lambda d: d.confidence, reverse=True)
         return detections
 
-
     def _save_frame(self, label: str = ""):
         """Debug aid: write the current camera image to logs/frames/."""
         image = self.camera.getImage()
@@ -172,7 +167,7 @@ class ObjectPerception:
         for det in self.detect():
             if det.object_type == object_type and (colour is None or det.colour == colour):
                 return det
-            
+
         # No matching target found in current frame
         return None
 
@@ -183,8 +178,7 @@ class ObjectPerception:
         self.best_detection = None
 
     def update_search(self):
-        """Inspect one frame and return (status, evidence).
-        """
+        """Inspect one frame and return (status, evidence)."""
 
         if not self.target:
             # Search not possible without target

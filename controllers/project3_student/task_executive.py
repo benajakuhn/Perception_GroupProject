@@ -1,6 +1,6 @@
-"""Cooperative, non-blocking executor for validated symbolic plans.
+"""Runs a validated plan, one small unit of work per Webots step.
 
-Advances at most one small unit of work per Webots step, evaluating conditionals deterministically.
+A conditional is evaluated from WorldState when it is reached.
 """
 
 from plan_schema import (
@@ -15,8 +15,7 @@ from plan_schema import (
 )
 
 # Backstop only: every skill has its own progress limit (navigation from the
-# route length, search from its frame count). 3500 ticks (~112 s) cut off
-# long navigations that had to drive around obstacles or reroute.
+# route length, search from its frame count).
 MAX_STEP_TICKS = 15000  # ~8 min at 32 ms timestep
 
 

@@ -1,8 +1,4 @@
-"""Unit tests for TaskExecutive using mock skills.
-
-Tests cooperative execution, conditional branch expansion,
-step timeouts, and safe cancellation.
-"""
+"""TaskExecutive with mock skills: step order, conditionals, timeouts, cancellation."""
 import sys
 import unittest
 from pathlib import Path

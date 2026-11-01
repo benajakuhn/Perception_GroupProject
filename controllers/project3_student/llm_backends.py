@@ -91,7 +91,8 @@ class LlamaCppBackend:
         elif self.json_mode:
             request["response_format"] = {"type": "json_object"}
 
-        #Streaming delivers the answer in small pieces, so the time limit can be checked while the model is still writing.
+        # Streaming delivers the answer in small pieces, so the time limit
+        # can be checked while the model is still writing.
         start_time = time.monotonic()
         answer_pieces = []
         self.last_finish_reason = None
@@ -111,9 +112,9 @@ class LlamaCppBackend:
         except LLMBackendError:
             raise
         except Exception as error:
-            #llama-cpp reports problems such as a prompt longer than n_ctx as
-            #ValueError/RuntimeError; turn them into backend errors so callers
-            #log and handle them like every other model failure.
+            # llama-cpp reports problems such as a prompt longer than n_ctx as
+            # ValueError/RuntimeError; turn them into backend errors so callers
+            # log and handle them like every other model failure.
             raise LLMBackendError(
                 f"llama-cpp failed: {type(error).__name__}: {error}"
             ) from error
@@ -157,8 +158,7 @@ class LlamaCppBackend:
 class MockBackend:
     """Returns saved answers in order.
 
-    TEST FIXTURES ONLY: these answers are hand-written, not model output, and
-    must not be reported as model performance.
+    For tests only: these answers are hand-written, not model output.
     """
 
     def __init__(self, saved_responses: list):

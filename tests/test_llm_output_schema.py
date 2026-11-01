@@ -3,7 +3,7 @@
 The schemas must accept every plan PlanValidator accepts that the model
 should be able to write (the prompt's examples included), and rule out
 what the validator would reject anyway (unknown actions or locations, too
-deep nesting). Plans below are hand-written fixtures, not model output.
+deep nesting). Plans below are hand-written fixtures.
 """
 import importlib.util
 import json

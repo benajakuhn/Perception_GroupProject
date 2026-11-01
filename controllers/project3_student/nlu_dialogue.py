@@ -252,9 +252,6 @@ class DialogueManager:
         # Lets "find the ball" follow an earlier "the red ball" without asking.
         self.context = {}
 
-    # ------------------------------------------------------------------
-    # Text analysis
-    # ------------------------------------------------------------------
     def extract_slots(self, text: str) -> dict:
         tokens = [WORD_SYNONYMS.get(t, t) for t in normalise(text).split()]
         token_set = set(tokens)
@@ -438,9 +435,6 @@ class DialogueManager:
         )
         return {"needs_clarification": True, "question": question, "goal": None}
 
-    # ------------------------------------------------------------------
-    # Follow-up answers
-    # ------------------------------------------------------------------
     def consume_followup(self, text: str, answer: str = None) -> dict:
         """Combine a follow-up answer with the pending goal.
 
@@ -560,9 +554,6 @@ class DialogueManager:
         """Forget any pending clarification, e.g. after a stop request."""
         self.state = DialogueState()
 
-    # ------------------------------------------------------------------
-    # Status explanation
-    # ------------------------------------------------------------------
     @staticmethod
     def describe_status(world_state: dict) -> str:
         """Answer "what are you doing and why?" from WorldState.as_dict() only.

@@ -1,6 +1,6 @@
 """Tests for location_grounding: nickname -> location id lookup.
 
-All plans below are hand-written test fixtures, not model output.
+Plans below are hand-written fixtures.
 """
 import sys
 import unittest

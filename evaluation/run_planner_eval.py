@@ -18,7 +18,7 @@ exactly the controller's path (replan_goal_off_thread):
 Their valid plans are also checked against the case's own rules (no driving
 to a blocked or failed room, no searching a room again).
 
-The results are GENUINE model output, not test fixtures. Every model call is
+The results are real model output, not test fixtures. Every model call is
 also logged by LLMInterface in logs/llm_<date>.jsonl, and a summary of each
 run is saved in evaluation/results/.
 """
@@ -40,7 +40,6 @@ from world_state import WorldState  # noqa: E402
 RESULTS_DIR = PROJECT_ROOT / "evaluation" / "results"
 LINE = "=" * 76
 
-# ----------------------------------------------------------------------------
 # Test goals: edit freely.
 #   (request type, what the user says, what a good plan should do)
 # Use your own wording, not the examples from the spec or the prompt template.
@@ -48,7 +47,6 @@ LINE = "=" * 76
 # Only the planner's own scope is tested here. Ambiguous goals ("find the
 # ball") are caught by DialogueManager before planning, and status questions
 # are answered from WorldState, so neither reaches the planner.
-# ----------------------------------------------------------------------------
 TEST_GOALS = [
     ("direct", "Drive over to Office B.",
      "navigate office_b"),
@@ -109,12 +107,10 @@ TEST_GOALS = [
 ]
 
 
-# ----------------------------------------------------------------------------
 # Replan cases: a failure part-way through a plan, written the way the
 # executive records it (trace entries with evidence, remaining steps starting
 # with the failed step). Hand-written situations, but the plans the model
-# returns for them are genuine model output.
-# ----------------------------------------------------------------------------
+# returns for them are real model output.
 
 def arrived(location):
     return {"step": {"action": "navigate", "location": location}, "status": "SUCCEEDED",
@@ -347,10 +343,6 @@ def parse_arguments():
     return parser.parse_args()
 
 
-# ----------------------------------------------------------------------------
-# The planning loop (the same steps the main controller will use)
-# ----------------------------------------------------------------------------
-
 def replan_like_controller(interface, validator, case):
     """A replan case, the same steps as replan_goal_off_thread in the controller."""
     world_state, attempts = case["world_state"], []
@@ -470,10 +462,6 @@ def check_replan_rules(plan, case):
          case["world_state"]["current_location"])
     return problems
 
-
-# ----------------------------------------------------------------------------
-# Printing
-# ----------------------------------------------------------------------------
 
 def print_header(interface, goal_count):
     description = interface.backend.description()

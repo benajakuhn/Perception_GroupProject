@@ -256,10 +256,6 @@ class Navigator:
         seconds = length / (4.5 * WHEEL_RADIUS) * 2.0 + 20.0
         return int(seconds * 1000 / self.timestep)
 
-    # ------------------------------------------------------------------
-    # Obstacles
-    # ------------------------------------------------------------------
-
     def _current_edge(self):
         """The graph edge being driven (the route start counts as a node)."""
         if self.waypoint_index > 0:

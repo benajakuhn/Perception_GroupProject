@@ -62,10 +62,9 @@ SEARCH_RESULT_WORDS = {
 }
 
 # Shown in replan prompts that still have places to search. Placeholders,
-# not real rooms: the small model copied the rooms of a concrete example,
-# and replan_output_schema() only lets it write the places really left.
-# With one room left the model copied the two-room example's conditional
-# and searched the same room twice, so each case gets its own example.
+# not real rooms, so there are no rooms to copy; replan_output_schema() only
+# lets the model write the places really left. One room left and several
+# rooms left each get their own example.
 REPLAN_EXAMPLE_ONE_ROOM = (
     '{"version": "1.0", "goal": "search the place left", "steps": ['
     '{"action": "navigate", "location": "<place left>"}, '
@@ -83,8 +82,7 @@ REPLAN_EXAMPLE = (
     '{"action": "report", "message": "Tell the user whether it was found."}]}'
 )
 
-# Extra advice for validator errors the model repeated when it was shown
-# only the error (evaluation/run_planner_eval.py, "Search the building").
+# Extra advice for validator errors the model tends to repeat.
 ERROR_HINTS = {
     "nesting depth exceeds":
         "Do not put conditionals inside each other; put them one after another "
@@ -131,8 +129,7 @@ def plan_situation(user_goal: str) -> dict:
                         the goal names no object
       navigate_to    -- the rooms a plan may drive to, or None for any: only
                         a search that names no room is narrowed, to
-                        DEFAULT_SEARCH_ROOMS (the model once searched
-                        reception first). When rooms are named, every
+                        DEFAULT_SEARCH_ROOMS. When rooms are named, every
                         location stays allowed, so a phrasing this check
                         misses can never lock the model out.
 
@@ -196,9 +193,8 @@ def replan_situation(original_goal: str, world_state: dict, execution_trace: lis
                      remaining_steps: list) -> dict:
     """Work out, in code, what a revised remainder may still do.
 
-    A small model did not infer this reliably from the trace (it re-planned
-    the whole goal and revisited searched or blocked rooms), so the facts are
-    decided here and given to both the prompt and replan_output_schema():
+    The facts are decided here, not left to the model, and given to both
+    the prompt and replan_output_schema():
 
       places_left   -- places the remaining plan still drives to, in order,
                        without blocked or failed destinations, rooms already
@@ -286,10 +282,10 @@ def replan_situation(original_goal: str, world_state: dict, execution_trace: lis
 def build_replan_prompt(situation: dict, rejected_plan=None, rejected_errors=None) -> str:
     """Short prompt for the remaining work after a failure.
 
-    Deliberately not the first-plan template: with its from-scratch examples
-    the small model re-planned the original goal (0/5 replans followed the
-    rules). This prompt states the facts from replan_situation() and what
-    the plan should look like; replan_output_schema() enforces the places.
+    Not the first-plan template, whose from-scratch examples lead the model
+    to re-plan the original goal. This prompt states the facts from
+    replan_situation() and what the plan should look like;
+    replan_output_schema() enforces the places.
     rejected_plan/rejected_errors: the previous revision and why it was
     rejected, for one corrected attempt.
     """
@@ -343,7 +339,6 @@ def build_replan_prompt(situation: dict, rejected_plan=None, rejected_errors=Non
                 REPLAN_EXAMPLE_ONE_ROOM,
             ]
         else:
-            # Without this the model drove home and never said why.
             lines.append("End with one report step that tells the user, in one short "
                          "sentence, what could not be done and why. Speak as the robot (\"I\").")
     else:

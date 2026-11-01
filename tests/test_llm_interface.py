@@ -1,8 +1,8 @@
 """Tests for LLMInterface: prompt -> backend -> parser -> plan, plus logging.
 
-Most tests use MockBackend with hand-written answers (test fixtures, not
-model output). Logs are written to a temporary folder, never to logs/.
-RealModelPlanTests only runs when the local model is configured.
+Most tests use MockBackend with hand-written fixtures. Logs are written to
+a temporary folder, never to logs/. RealModelPlanTests only runs when the
+local model is configured.
 """
 import importlib.util
 import json
@@ -331,7 +331,7 @@ def real_model_is_available():
 @unittest.skipUnless(real_model_is_available(),
                      "needs config/llm_config.json, the model file and llama-cpp-python")
 class RealModelPlanTests(LLMInterfaceTestCase):
-    """Runs the real model. Its answer is genuine model output, not a fixture."""
+    """Runs the real model."""
 
     def test_direct_goal_gives_a_plan_the_validator_accepts(self):
         config = json.loads(LOCAL_CONFIG_PATH.read_text(encoding="utf-8"))

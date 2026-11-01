@@ -1,7 +1,4 @@
-"""Baseline and comprehensive tests for the deterministic plan boundary.
-
-Tests schema adherence, argument types, semantic constraints, and security rules.
-"""
+"""PlanValidator: valid, malformed, unsupported and unsafe plans."""
 import json
 import sys
 import unittest
@@ -18,8 +15,6 @@ from plan_validator import PlanValidator  # noqa: E402
 class PlanValidatorTests(unittest.TestCase):
     def setUp(self):
         self.validator = PlanValidator()
-
-    # --- Baseline tests from starter package (preserved) ---
 
     def test_accepts_valid_plan(self):
         plan = {
@@ -53,8 +48,6 @@ class PlanValidatorTests(unittest.TestCase):
         valid, errors = self.validator.validate(plan)
         self.assertFalse(valid)
         self.assertTrue(any("invalid location" in error for error in errors))
-
-    # --- Comprehensive extensions ---
 
     def test_accepts_valid_conditional_plan(self):
         plan = {

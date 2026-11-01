@@ -1,7 +1,8 @@
-"""Main Webots controller for the Generative-AI Embodied Robot Assistant.
+"""Main Webots controller for the robot assistant.
 
-Coordinates non-blocking speech polling, off-thread generative planning, deterministic
-plan validation, cooperative task execution, and sensor-grounded physical skills.
+Webots devices are only used from this loop. Speech is polled without
+waiting, planning and validation run in a worker thread, and TaskExecutive
+advances the validated plan a little on every Webots step.
 """
 from concurrent.futures import ThreadPoolExecutor
 

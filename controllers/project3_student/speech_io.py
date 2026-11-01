@@ -90,9 +90,6 @@ class SpeechIO:
             )
             self._asr_thread.start()
 
-    # ------------------------------------------------------------------
-    # Main-loop API (non-blocking)
-    # ------------------------------------------------------------------
     def poll(self):
         """Return the next utterance, or None if there is none.
 
@@ -148,9 +145,6 @@ class SpeechIO:
         if self._asr_thread is not None and self.input_mode == "speech":
             self._asr_thread.join(timeout=1.0)
 
-    # ------------------------------------------------------------------
-    # Speech synthesis thread
-    # ------------------------------------------------------------------
     def _default_tts(self):
         choice = os.environ.get("SPEECH_TTS", "").lower()
         if choice == "print":
@@ -190,9 +184,6 @@ class SpeechIO:
                 if self._speech.empty():
                     self._mute_until = time.monotonic() + ECHO_GUARD_SECONDS
 
-    # ------------------------------------------------------------------
-    # Speech recognition thread
-    # ------------------------------------------------------------------
     def _asr_loop(self):
         if os.environ.get("SPEECH_INPUT", "").lower() == "console":
             self._console_loop("SPEECH_INPUT=console")

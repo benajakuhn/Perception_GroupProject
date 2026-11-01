@@ -3,8 +3,7 @@
 plan_parser: turning raw model text into a plan dict.
 prompt_builder: filling the planning prompt template.
 
-All model outputs below are hand-written test fixtures, not genuine model
-output, and say nothing about real model performance.
+Model outputs below are hand-written fixtures.
 """
 import json
 import re

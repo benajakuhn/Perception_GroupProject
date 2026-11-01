@@ -1,8 +1,8 @@
 """Tests for llm_backends.
 
-Most tests use MockBackend and hand-written fixtures (not model output). The
-RealModelTests class only runs when config/llm_config.json points to an
-existing model file and llama-cpp-python is installed; otherwise it is skipped.
+Most tests use MockBackend with hand-written fixtures. RealModelTests only
+runs when config/llm_config.json points to an existing model file and
+llama-cpp-python is installed; otherwise it is skipped.
 """
 import importlib.util
 import json
@@ -211,7 +211,7 @@ class LlamaCppBackendWithFakeModelTests(unittest.TestCase):
 @unittest.skipUnless(real_model_is_available(),
                      "needs config/llm_config.json, the model file and llama-cpp-python")
 class RealModelTests(unittest.TestCase):
-    """Runs the real model once. Slower (a few seconds) and not a fixture."""
+    """Runs the real model once (a few seconds)."""
 
     def test_description_records_model_and_settings(self):
         backend = create_backend(load_local_config(), PROJECT_ROOT)

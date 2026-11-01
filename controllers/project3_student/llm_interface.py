@@ -4,7 +4,7 @@ LLMInterface is the only planning class the rest of the controller uses.
 Every request follows the same flow:
 
     prompt_builder -> llm_backends -> plan_parser -> location_grounding -> plan
-    (build prompt)    (ask model)     (text->dict)   (nickname -> id)     (UNTRUSTED)
+    (build prompt)    (ask model)     (text->dict)   (nickname -> id)     (untrusted)
                       + output_schema: what the model can write at all
 
 Before each request, prompt_builder works out the request's "situation" in
@@ -15,10 +15,10 @@ user named, and for replans driving only to the places still left. Location
 grounding remains a fallback for backends that cannot enforce a schema.
 
 Every model call is written to logs/llm_<date>.jsonl, with the situation
-(the schema is rebuilt from it exactly, so the large schema is not logged). This class never
-validates plans: the main loop passes every returned plan to PlanValidator.
-All methods are slow and must run in the worker thread, never in the Webots
-loop.
+(the schema is rebuilt from it exactly, so the large schema is not logged).
+This class never validates plans: the main loop passes every returned plan
+to PlanValidator. All methods are slow and must run in the worker thread,
+never in the Webots loop.
 """
 import json
 import time
@@ -84,10 +84,6 @@ class LLMInterface:
         if self.backend is None:
             self._create_backend()
 
-    # ------------------------------------------------------------------
-    # Public methods: one per kind of request
-    # ------------------------------------------------------------------
-
     def generate_plan(self, user_goal: str, world_state: dict) -> Dict[str, Any]:
         """First plan for a new goal."""
         prompt = build_plan_prompt(self.template, user_goal, world_state)
@@ -123,10 +119,6 @@ class LLMInterface:
                                      rejected_errors=rejected_errors)
         return self._ask_model(prompt, "replan", situation, replan_output_schema(situation))
 
-    # ------------------------------------------------------------------
-    # Shared steps
-    # ------------------------------------------------------------------
-
     def _ask_model(self, prompt: str, request_kind: str, situation: dict,
                    schema: dict) -> Dict[str, Any]:
         """Send the prompt, parse the answer, log the call, return the plan."""
@@ -151,7 +143,7 @@ class LLMInterface:
             "seconds": None,
         }
 
-        # 1. Ask the model. Failed calls (e.g. timeouts) are logged too.
+        # Failed calls (e.g. timeouts) are logged too.
         start_time = time.monotonic()
         try:
             raw_text = self.backend.complete(prompt, schema=schema)
@@ -166,7 +158,7 @@ class LLMInterface:
         finish_reason = getattr(self.backend, "last_finish_reason", None)
         call_record["finish_reason"] = finish_reason
 
-        # 2. Turn the answer text into a dict (syntax repairs only).
+        # Turn the answer text into a dict (syntax repairs only).
         plan, parse_errors, repairs = parse_plan_text(raw_text)
         if plan is None and finish_reason == "length":
             # Tells the log reader and the correction prompt why the JSON is broken.
@@ -174,7 +166,7 @@ class LLMInterface:
                 "The answer was cut off before it was complete; write a shorter plan."
             )
 
-        # 3. Map location nicknames ("corridor") to ids ("main_corridor").
+        # Map location nicknames ("corridor") to ids ("main_corridor").
         if plan is not None:
             repairs.extend(ground_locations(plan))
 
@@ -183,7 +175,7 @@ class LLMInterface:
         call_record["parse_errors"] = parse_errors
         call_record["repairs"] = repairs
 
-        # 4. Log, then hand the plan back (or explain why there is none).
+        # Log, then hand the plan back (or explain why there is none).
         self._save_call_record(call_record)
         if plan is None:
             raise PlanParseError(raw_text, parse_errors)

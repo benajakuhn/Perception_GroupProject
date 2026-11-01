@@ -27,7 +27,7 @@ microphone -> SpeechIO (Vosk) -> DialogueManager -> LLMInterface (Qwen) -> plan
 | Audio input                  | sounddevice 0.5.5                                                               |
 | Vision                       | OpenCV 4.13, NumPy 2.5                                                          |
 
-The project used an external model (Qwen2.5-0.5B). The guide to download it is in section 2
+The model (Qwen2.5-3B) is not included; section 2 shows how to download it.
 
 ## 2. Installation
 
@@ -62,7 +62,7 @@ Run every command from the project folder, with the Python that Webots uses
    | `temperature`            | 0.0         | the same goal gives the same plan                                             |
    | `seed`                   | 0           | reproducible runs                                                             |
    | `json_mode`              | true        | the runtime only produces valid JSON                                          |
-   | `constrained_output`     | true        | the model can only write plans that fit a JSON schema (section 6)             |
+   | `constrained_output`     | true        | the model can only write plans that fit a JSON schema                         |
    | `n_ctx` / `max_tokens` | 4096 / 1000 | the longest prompt (a correction) fits                                        |
    | `timeout_seconds`        | 180         | a model call takes 5–60 s on our laptop CPU; slower machines need the margin |
    | `max_retries`            | 1           | one corrected plan after a rejection                                          |
@@ -87,8 +87,8 @@ Run every command from the project folder, with the Python that Webots uses
 - Choose another input with `SPEECH_INPUT_DEVICE=<index or part of the name>`.
 - `SPEECH_INPUT=console` lets you type requests instead (debugging only; the
   assessed input is speech).
-- Use a quiet room. Background speech is filtered (see section 6), but a TV or
-  video can still be heard as a request.
+- Use a quiet room. Background speech is filtered, but a TV or video can
+  still be heard as a request.
 
 ## 4. Running
 

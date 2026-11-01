@@ -1,6 +1,8 @@
 """Deterministic validation gate between generative planning and execution.
 
-Validates untrusted plan dictionaries against schema, parameter types, semantic safety, and security rules.
+Every plan from the model is checked here before the robot moves: fields and
+types, allowed actions, locations and objects, plan limits, and text that
+looks like code.
 """
 from plan_schema import (
     ACTION_OPTIONAL_FIELDS,
@@ -79,7 +81,7 @@ class PlanValidator:
     def check_revision(self, plan: dict, world_state: dict):
         """Extra checks for a replanned remainder: (bool, errors).
 
-        This wil run after validate(). A revision must not drive to a location found
+        Runs after validate(). A revision must not drive to a location found
         blocked or unreachable during this task, and must not search for the
         same target again in a room already searched (FOUND, NOT_FOUND or
         UNCERTAIN). The robot may have stopped between rooms, so a search

@@ -32,12 +32,10 @@ from plan_schema import (
 
 # Long free text makes the model ramble; the validator allows MAX_TEXT_LENGTH.
 GOAL_TEXT_LENGTH = 120
-# A plan that searches must end with a report (asked in words, the model
-# left it out of a third of its conditional searches). JSON Schema cannot say
-# "the last item", so each allowed length is listed: n steps, then a report.
-# Every listed length slows generation (measured: 10 lengths took 43 s for a
-# plan that takes 27 s with 6), so 6: the longest template example has 5 steps
-# before its report, and a search of five rooms needs 6.
+# A plan that searches must end with a report. JSON Schema cannot say "the
+# last item", so each allowed length is listed: n steps, then a report. Every
+# listed length slows generation, so the list stops at 6: the longest template
+# example has 5 steps before its report, and a search of five rooms needs 6.
 MAX_STEPS_BEFORE_REPORT = 6
 
 
@@ -92,8 +90,7 @@ def replan_output_schema(situation: dict) -> dict:
 
     target = situation.get("search_target")
     if not target:
-        # Only trips are left: one step per place, then a report. Asked in
-        # words, the model drove home and never said what had failed.
+        # Only trips are left: one step per place, then a report.
         slots = [{"anyOf": simple_steps}] * len(places) + [_report()]
         return _plan({"type": "array", "prefixItems": slots, "items": False,
                       "minItems": len(slots)})
@@ -104,23 +101,18 @@ def replan_output_schema(situation: dict) -> dict:
     if list(kinds.values()).count("search") >= 2:
         # Only "if not found, go on searching": the result of the search
         # before the failure is already known, and nothing else is left.
-        # With one room to search there is nothing to go on to, and the
-        # model filled the branch with the same room again.
+        # With one room to search there is nothing to go on to.
         choices.append(_object(
             action={"const": "conditional"},
             condition=_object(source={"const": "last_search_result"},
                               operator={"const": "found"}, value={"const": False}),
             then={"type": "array", "items": {"anyOf": simple_steps}},
-            # llama-cpp ignored {"maxItems": 0} here and let a report in.
+            # {"const": []}, not {"maxItems": 0}: llama-cpp ignores maxItems here.
             **{"else": {"const": []}},
         ))
     definitions = {"step": {"anyOf": choices}}
     return _plan(_ending_with_report({"$ref": "#/$defs/step"}), definitions)
 
-
-# ----------------------------------------------------------------------------
-# Building blocks
-# ----------------------------------------------------------------------------
 
 def _plan(steps: dict, definitions: dict = None) -> dict:
     schema = _object(
@@ -149,8 +141,8 @@ def _step_choices(level: int, locations: list, searches: list, may_search: bool,
     """A reference to the step choices at one nesting level.
 
     Conditionals only while the validator allows more nesting. may_search
-    is False on the branch that runs once the object was found: searching
-    there again is what the model wrote in its odd plans.
+    is False on the branch that runs once the object was found, so that
+    branch cannot search again.
     """
     name = (f"steps_level_{level}" + ("" if may_search else "_found")
             + ("" if with_report else "_before_report"))
