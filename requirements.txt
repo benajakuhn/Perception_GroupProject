@@ -11,3 +11,17 @@ opencv-contrib-python==4.13.0.92  # provides cv2; opencv-python works too
 # compiler is needed.
 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 llama-cpp-python==0.3.36
+
+# ---------------------------------------------------------------------------
+# Language model
+# ---------------------------------------------------------------------------
+# This project uses Qwen2.5-3B-Instruct (GGUF, Q4_K_M), not the Lab model.
+# File:       qwen2.5-3b-instruct-q4_k_m.gguf (about 2.1 GB)
+# Download:   https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf
+# Model page: https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF
+
+# ---------------------------------------------------------------------------
+# Speech model
+# ---------------------------------------------------------------------------
+# Speech model: vosk-model-small-en-us-0.15 (about 40 MB)
+# Download: https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
