@@ -4,8 +4,6 @@ The generative planner may interpret language, but the controller still needs
 explicit dialogue state so that incomplete requests and follow-up answers can
 be handled coherently.
 
-All methods are fast, rule-based and free of Webots access. Call them from the
-main controller loop so that DialogueState is only touched by one thread.
 """
 import json
 import re

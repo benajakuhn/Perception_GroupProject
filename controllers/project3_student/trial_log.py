@@ -1,4 +1,4 @@
-"""One record per task, for the evaluation (logs/trials_<date>.jsonl).
+"""Log one record per task, used for the evaluation and live simulation testing (logs/trials_<date>.jsonl).
 
 The record is built only from the controller's own execution evidence: the
 goal, each validated plan, every step's status and evidence, and what the

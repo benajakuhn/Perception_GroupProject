@@ -1,6 +1,6 @@
 """Turn raw language-model text into a plan dictionary.
 
-The parser repairs JSON *syntax* only: Markdown fences, text around the JSON
+The parser repairs JSON syntax only: Markdown fences, text around the JSON
 object, trailing commas and curly quotes. It never changes plan *content*.
 Missing fields, unknown actions or invalid locations are left untouched so
 that PlanValidator can reject them.

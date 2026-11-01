@@ -1,7 +1,7 @@
 {
   "backend": "local_gguf_or_online",
-  "model_identifier": "describe-your-selected-model",
-  "model_path": "models/model-file-not-submitted.gguf",
+  "model_identifier": "your-selected-model",
+  "model_path": "models/model-file.gguf",
   "base_url": "",
   "api_key_env": "",
   "temperature": 0.0,

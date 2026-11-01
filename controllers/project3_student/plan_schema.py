@@ -1,6 +1,6 @@
 """Shared symbolic-plan definitions and schemas.
 
-Defines the deterministic contract, allowed actions, execution statuses, and condition grammar.
+Defines the allowed actions, execution statuses, and condition grammar.
 """
 
 ALLOWED_ACTIONS = {

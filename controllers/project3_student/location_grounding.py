@@ -7,7 +7,7 @@ in one fixed table. It is deliberately strict:
 - unknown names are left unchanged, so PlanValidator still rejects them;
 - every replacement is returned as a note, so it can be logged.
 
-The same table is shown to the model in the prompt (prompt_builder.py).
+The same table is shown to the model in the prompt.
 """
 import re
 

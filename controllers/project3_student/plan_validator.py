@@ -79,7 +79,7 @@ class PlanValidator:
     def check_revision(self, plan: dict, world_state: dict):
         """Extra checks for a replanned remainder: (bool, errors).
 
-        Run after validate(). A revision must not drive to a location found
+        This wil run after validate(). A revision must not drive to a location found
         blocked or unreachable during this task, and must not search for the
         same target again in a room already searched (FOUND, NOT_FOUND or
         UNCERTAIN). The robot may have stopped between rooms, so a search
